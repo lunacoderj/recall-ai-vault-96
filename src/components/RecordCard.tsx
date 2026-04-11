@@ -1,16 +1,16 @@
 import { useNavigate } from "react-router-dom";
 import { Video, FileText, Link as LinkIcon, StickyNote, Calendar, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Record } from "@/lib/mockData";
+import type { Record as KnowledgeRecord } from "@/lib/mockData";
 
-const sourceIcons: Record<string, React.ElementType> = {
+const sourceIcons: { [key: string]: React.ElementType } = {
   video: Video,
   pdf: FileText,
   link: LinkIcon,
   note: StickyNote,
 };
 
-const sourceColors: Record<string, string> = {
+const sourceColors: { [key: string]: string } = {
   video: "bg-red-500/20 text-red-400 border-red-500/30",
   pdf: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   link: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -18,7 +18,7 @@ const sourceColors: Record<string, string> = {
 };
 
 interface RecordCardProps {
-  record: Record;
+  record: KnowledgeRecord;
 }
 
 const RecordCard = ({ record }: RecordCardProps) => {

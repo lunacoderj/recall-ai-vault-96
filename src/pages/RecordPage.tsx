@@ -7,7 +7,7 @@ import Navbar from "@/components/Navbar";
 import { mockRecords } from "@/lib/mockData";
 import { useState } from "react";
 
-const sourceIcons: Record<string, React.ElementType> = { video: Video, pdf: FileText, link: LinkIcon, note: StickyNote };
+const sourceIcons: { [key: string]: React.ElementType } = { video: Video, pdf: FileText, link: LinkIcon, note: StickyNote };
 
 const RecordPage = () => {
   const { id } = useParams();

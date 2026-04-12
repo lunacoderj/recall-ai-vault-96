@@ -49,7 +49,7 @@ app.use(cors({
 // ─── Rate Limiting ───────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                 // 100 requests per window
+  max: 1000,                // Increased limit for background polling
   standardHeaders: true,
   legacyHeaders: false,
   message: {

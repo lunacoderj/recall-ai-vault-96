@@ -27,7 +27,8 @@ app.use(xss()); // Filter XSS
 // Production ready CORS
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  'https://recall-ai-vault-96.vercel.app', // Explicitly add current production URL
+  'https://recallaivault.jaggu.me',
+  'https://recall-ai-vault-96.vercel.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ].filter(Boolean);

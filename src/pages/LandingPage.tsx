@@ -16,32 +16,36 @@ const LandingPage = () => {
   const bentoItems = [
     { 
       title: "Social Extraction", 
-      desc: "Instantly turn Reels, YouTube shorts, and threads into searchable text. No more manual typing.",
+      desc: "Instantly turn Reels, YouTube shorts, and threads into searchable text.",
       icon: Video,
+      image: "/hero/social.png",
       color: "text-red-500",
       bg: "bg-red-500/10",
       className: "md:col-span-2"
     },
     { 
       title: "Document Analysis", 
-      desc: "Upload PDFs and Docs. Get summaries and insights automatically.",
+      desc: "Upload PDFs and Docs. Get insights automatically.",
       icon: FileText,
+      image: "/hero/docs.png",
       color: "text-blue-500",
       bg: "bg-blue-500/10",
       className: "md:col-span-1"
     },
     { 
       title: "Intelligent Search", 
-      desc: "Search context, not just keywords. Find 'that recipe with the blue bowl' in seconds.",
+      desc: "Search context, not just keywords. Find anything in seconds.",
       icon: Search,
+      image: "/hero/search.png",
       color: "text-emerald-500",
       bg: "bg-emerald-500/10",
       className: "md:col-span-1"
     },
     { 
       title: "Privacy First", 
-      desc: "Your data stays yours. Plugging in your own API means results are processed on your own infrastructure.",
+      desc: "Your data stays yours. Plug in your own API for absolute ownership.",
       icon: ShieldCheck,
+      image: "/hero/privacy.png",
       color: "text-amber-500",
       bg: "bg-amber-500/10",
       className: "md:col-span-2"
@@ -186,13 +190,25 @@ const LandingPage = () => {
                 transition={{ delay: i * 0.1 }}
                 className={`group relative rounded-3xl border border-border/50 bg-card p-8 flex flex-col justify-between overflow-hidden hover:border-primary/50 transition-all ${item.className}`}
               >
-                <div className="absolute top-0 right-0 p-8 text-muted-foreground group-hover:text-primary transition-colors">
+                <div className="absolute top-0 right-0 p-8 text-muted-foreground group-hover:text-primary transition-colors z-20">
                   <item.icon className="h-6 w-6" />
                 </div>
-                <div className={`p-3 rounded-2xl w-fit ${item.bg} mb-4`}>
-                  <item.icon className={`h-6 w-6 ${item.color}`} />
+                
+                {/* Image Background */}
+                <div className="absolute inset-x-0 top-0 h-2/3 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-card z-10" />
+                  <motion.img 
+                    src={item.image} 
+                    alt={item.title}
+                    whileHover={{ scale: 1.1 }}
+                    className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-all duration-700"
+                  />
                 </div>
-                <div>
+
+                <div className="relative z-20">
+                  <div className={`p-3 rounded-2xl w-fit ${item.bg} mb-4`}>
+                    <item.icon className={`h-6 w-6 ${item.color}`} />
+                  </div>
                   <h3 className="text-xl font-bold mb-2">{item.title}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed italic">{item.desc}</p>
                 </div>

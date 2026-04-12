@@ -2,29 +2,45 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, Brain, Inbox } from "lucide-react";
+import { SkeletonGrid } from "@/components/SkeletonLoaders";
 import { Input } from "@/components/ui/input";
 import Navbar from "@/components/Navbar";
 import RecordCard from "@/components/RecordCard";
 import ApiKeyModal from "@/components/ApiKeyModal";
-import { mockRecords } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { getRecords } from "@/lib/services";
 
 const HomePage = () => {
   const [search, setSearch] = useState("");
   const [showApiModal, setShowApiModal] = useState(false);
-  const { hasApiKey } = useAuth();
+  const { user, hasGeminiKey } = useAuth();
   const navigate = useNavigate();
 
+  const { data, isLoading } = useQuery({
+    queryKey: ["records"],
+    queryFn: () => getRecords(1, 10),
+    enabled: !!user,
+  });
+
   useEffect(() => {
-    if (!hasApiKey()) setShowApiModal(true);
-  }, []);
+    // Show setup modal if Gemini key is missing
+    if (user && !hasGeminiKey) {
+      setShowApiModal(true);
+    }
+  }, [user, hasGeminiKey]);
+
+  const handleCloseApiModal = () => {
+    setShowApiModal(false);
+    localStorage.setItem("recallai_api_alert_dismissed", "true");
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (search.trim()) navigate(`/search?q=${encodeURIComponent(search.trim())}`);
   };
 
-  const records = mockRecords;
+  const records = data?.records || [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,10 +74,13 @@ const HomePage = () => {
       {/* Records */}
       <section className="container mx-auto px-6 pb-16">
         <h3 className="text-lg font-semibold text-foreground mb-4">Recent Records</h3>
-        {records.length > 0 ? (
+        
+        {isLoading ? (
+          <SkeletonGrid count={6} type="record" />
+        ) : records.length > 0 ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {records.map((r, i) => (
-              <motion.div key={r.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
+              <motion.div key={r._id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}>
                 <RecordCard record={r} />
               </motion.div>
             ))}

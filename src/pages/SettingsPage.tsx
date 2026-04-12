@@ -1,45 +1,34 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Key, Mail, Lock, Trash2, LogOut, Shield } from "lucide-react";
+import { ArrowLeft, Key, Mail, LogOut, Shield, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 const SettingsPage = () => {
-  const { user, logout, getApiKey, updateApiKey } = useAuth();
+  const { user, logout, updateApiKey, hasApiKey } = useAuth();
   const navigate = useNavigate();
-  const [apiKey, setApiKey] = useState(getApiKey() || "");
-  const [email, setEmail] = useState(user?.email || "");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSaveApiKey = () => {
+  const handleSaveApiKey = async () => {
     if (!apiKey.trim()) { toast.error("Please enter an API key"); return; }
-    updateApiKey(apiKey.trim());
-    toast.success("API key updated");
-  };
-
-  const handleUpdateEmail = () => {
-    toast.success("Email updated (demo)");
-  };
-
-  const handleUpdatePassword = () => {
-    if (!currentPassword || !newPassword) { toast.error("Fill in both fields"); return; }
-    toast.success("Password updated (demo)");
-    setCurrentPassword("");
-    setNewPassword("");
-  };
-
-  const handleDeleteAccount = () => {
-    if (confirm("Are you sure? This action is irreversible.")) {
-      logout();
-      navigate("/");
-      toast.success("Account deleted (demo)");
+    setLoading(true);
+    try {
+      await updateApiKey(apiKey.trim());
+      toast.success("API key updated successfully");
+      setApiKey("");
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      toast.error(error.response?.data?.message || "Failed to update API key");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -52,71 +41,73 @@ const SettingsPage = () => {
         </button>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-2xl font-bold text-foreground mb-8">Settings</h1>
+          <div className="flex items-center justify-between mb-8">
+            <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+            <Badge variant={hasApiKey ? "outline" : "secondary"} className={hasApiKey ? "bg-green-500/10 text-green-400 border-green-500/20" : ""}>
+               {hasApiKey ? "API Connected" : "API Missing"}
+            </Badge>
+          </div>
 
           {/* API Key */}
           <section className="rounded-xl border border-border bg-card p-6 mb-6">
             <div className="flex items-center gap-2 mb-4">
               <Key className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">API Key</h2>
+              <h2 className="text-lg font-semibold text-foreground">AI Configuration</h2>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
-                <Label className="text-foreground">Gemini or OpenAI API Key</Label>
-                <Input value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-... or AIza..." className="mt-1.5 h-11 bg-secondary border-border font-mono text-sm" />
+                <Label className="text-foreground">Gemini API Key</Label>
+                <Input 
+                  type="password"
+                  value={apiKey} 
+                  onChange={(e) => setApiKey(e.target.value)} 
+                  placeholder={hasApiKey ? "••••••••••••••••" : "Paste your Google AI Studio key here"} 
+                  className="mt-2 h-11 bg-secondary border-border font-mono text-sm" 
+                />
               </div>
-              <div className="flex items-start gap-2 rounded-lg bg-primary/10 border border-primary/20 p-3">
+              <div className="flex items-start gap-2 rounded-lg bg-primary/10 border border-primary/20 p-4">
                 <Shield className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                <p className="text-xs text-primary">Your API key is stored securely and used only for your requests.</p>
+                <p className="text-xs text-primary leading-relaxed">
+                  Your API key is encrypted with AES-256 before being stored in our database. 
+                  It is used only to process your personal documents and notes.
+                </p>
               </div>
-              <Button onClick={handleSaveApiKey} className="gradient-bg text-primary-foreground">Save API Key</Button>
+              <Button onClick={handleSaveApiKey} disabled={loading} className="gradient-bg text-primary-foreground min-w-[140px]">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {hasApiKey ? "Update Key" : "Save Key"}
+              </Button>
             </div>
           </section>
 
-          {/* Email */}
+          {/* Profile */}
           <section className="rounded-xl border border-border bg-card p-6 mb-6">
             <div className="flex items-center gap-2 mb-4">
               <Mail className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Email</h2>
+              <h2 className="text-lg font-semibold text-foreground">Account Information</h2>
             </div>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-foreground">Email Address</Label>
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1.5 h-11 bg-secondary border-border" />
+            <div className="space-y-4">
+              <div className="grid gap-1">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Display Name</Label>
+                <p className="text-sm font-medium text-foreground">{user?.name}</p>
               </div>
-              <Button onClick={handleUpdateEmail} variant="outline" className="border-border">Update Email</Button>
-            </div>
-          </section>
-
-          {/* Password */}
-          <section className="rounded-xl border border-border bg-card p-6 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Lock className="h-5 w-5 text-primary" />
-              <h2 className="text-lg font-semibold text-foreground">Password</h2>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-foreground">Current Password</Label>
-                <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="mt-1.5 h-11 bg-secondary border-border" />
+              <div className="grid gap-1">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Email Address</Label>
+                <p className="text-sm font-medium text-foreground">{user?.email}</p>
               </div>
-              <div>
-                <Label className="text-foreground">New Password</Label>
-                <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-1.5 h-11 bg-secondary border-border" />
+              <div className="grid gap-1">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Auth Provider</Label>
+                <Badge variant="secondary" className="w-fit capitalize text-[10px]">{user?.authProvider || 'Email'}</Badge>
               </div>
-              <Button onClick={handleUpdatePassword} variant="outline" className="border-border">Update Password</Button>
             </div>
           </section>
 
           <Separator className="my-6 bg-border" />
 
           {/* Danger Zone */}
-          <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-destructive mb-4">Danger Zone</h2>
+          <section className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-destructive mb-4">Account Controls</h2>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={handleDeleteAccount}>
-                <Trash2 className="mr-2 h-4 w-4" /> Delete Account
-              </Button>
-              <Button variant="outline" className="border-border" onClick={() => { logout(); navigate("/"); }}>
+              <Button variant="outline" className="border-border hover:bg-destructive hover:text-white transition-all" onClick={async () => { await logout(); navigate("/"); }}>
                 <LogOut className="mr-2 h-4 w-4" /> Log Out
               </Button>
             </div>

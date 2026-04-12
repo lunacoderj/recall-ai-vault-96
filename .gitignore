@@ -22,3 +22,25 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ─── Server / Backend ────────────────────────────────
+server/.env
+server/.env.local
+server/.env.production
+server/logs/*.log
+server/logs/error.log
+server/logs/combined.log
+server/uploads/
+
+# ─── Environment files ───────────────────────────────
+.env
+.env.local
+.env.production
+
+# ─── Firebase ─────────────────────────────────────────
+server/firebase-service-account.json
+firebase-service-account.json
+*-service-account.json
+
+# ─── Docker ───────────────────────────────────────────
+docker-compose.override.yml

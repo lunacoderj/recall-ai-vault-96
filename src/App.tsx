@@ -16,6 +16,7 @@ import RecordPage from "./pages/RecordPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import FriendsPage from "./pages/FriendsPage";
+import ShareReceiver from "./pages/ShareReceiver";
 import NotFound from "./pages/NotFound";
 import BottomNav from "./components/BottomNav";
 
@@ -51,6 +52,7 @@ const AppRoutes = () => {
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/friends" element={<ProtectedRoute><FriendsPage /></ProtectedRoute>} />
+          <Route path="/share-receiver" element={<ProtectedRoute><ShareReceiver /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

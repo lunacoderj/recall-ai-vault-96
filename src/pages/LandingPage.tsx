@@ -54,8 +54,8 @@ const LandingPage = () => {
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/40 backdrop-blur-xl">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-primary/10 p-1.5 border border-primary/20">
-              <Brain className="h-6 w-6 text-primary" />
+            <div className="rounded-xl bg-primary/10 p-1 border border-primary/20">
+              <img src="/logo.png" alt="RecallAI Logo" className="h-7 w-7 object-contain" />
             </div>
             <span className="text-xl font-bold tracking-tight text-foreground">RecallAI</span>
           </div>
@@ -226,6 +226,63 @@ const LandingPage = () => {
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t.meta}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 🚀 HIGH ENERGY: FREE API KEYS SECTION */}
+        <section className="py-24 px-6">
+          <div className="container mx-auto max-w-5xl">
+            <div className="relative rounded-[3rem] bg-foreground text-background p-10 md:p-20 overflow-hidden group">
+              {/* Dynamic Background Elements */}
+              <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 blur-[100px] -z-10 group-hover:bg-primary/40 transition-colors" />
+              <div className="absolute -bottom-20 -left-20 w-80 h-80 bg-blue-500/20 blur-[100px] -z-10" />
+
+              <div className="flex flex-col items-center text-center space-y-8 relative">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-background/10 border border-background/20 text-xs font-black uppercase tracking-[0.2em]">
+                  <Zap className="h-4 w-4 text-yellow-400 fill-yellow-400" /> 100% Free Setup
+                </div>
+                
+                <h2 className="text-4xl md:text-6xl font-black leading-tight tracking-tighter">
+                  Stop Paying For <br /> AI Subscriptions.
+                </h2>
+                
+                <p className="text-lg md:text-xl text-background/70 max-w-2xl font-medium leading-relaxed">
+                  RecallAI gives you <span className="text-background underline decoration-primary decoration-4">Pro-Level features</span> for $0/mo. 
+                  All you need is your own API keys. They're 100% free to get, take 60 seconds to set up, 
+                  and unlock unlimited potential.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full pt-8">
+                  {[
+                    { name: "Gemini AI", desc: "Intelligence & Summaries", link: "Free at Google AI Studio" },
+                    { name: "Instagram Engine", desc: "RapidAPI Free Tier", link: "1-Click Subscription" },
+                    { name: "YouTube Cloud", desc: "Supadata Free Access", link: "Instant Key Retrieval" },
+                    { name: "OpenRouter", desc: "Optional GPT/Claude", link: "Developer Sandbox" }
+                  ].map((item, i) => (
+                    <motion.div 
+                      key={item.name}
+                      whileHover={{ y: -5 }}
+                      className="p-6 rounded-2xl bg-background/5 border border-background/10 text-left space-y-2"
+                    >
+                      <h4 className="font-black text-primary uppercase text-xs tracking-wider">{item.name}</h4>
+                      <p className="text-sm font-bold text-background leading-tight">{item.desc}</p>
+                      <p className="text-[10px] text-background/40">{item.link}</p>
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-4 items-center pt-8">
+                  <Button 
+                    size="lg" 
+                    className="rounded-full bg-primary text-primary-foreground hover:scale-105 transition-transform px-12 h-16 text-xl font-black shadow-2xl"
+                    onClick={() => navigate("/signup")}
+                  >
+                    I'M READY — LET'S GO! <ArrowRight className="ml-2 h-6 w-6" />
+                  </Button>
+                  <p className="text-xs text-background/50 font-mono">No Credit Card Required. Just pure, unadulterated intelligence.</p>
+                </div>
               </div>
             </div>
           </div>

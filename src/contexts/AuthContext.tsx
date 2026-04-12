@@ -11,15 +11,19 @@ import {
 import { auth, googleProvider } from "@/lib/firebase";
 import api from "@/lib/api";
 
+import { generateVaultKeys, exportPublicKey } from "@/lib/crypto";
+import { saveVaultKeyPair, getVaultKeyPair } from "@/lib/idb";
+
 interface User {
   _id: string;
   firebaseUid: string;
   email: string;
   name: string;
+  publicKey?: string;
   hasGeminiKey?: boolean;
   hasOpenRouterKey?: boolean;
   hasSupadataKey?: boolean;
-  hasApifyKey?: boolean;
+  hasRapidApiKey?: boolean;
   aiProvider?: 'gemini' | 'openrouter' | 'openai';
   authProvider?: string;
 }
@@ -31,10 +35,11 @@ interface AuthContextType {
   signup: (email: string, password: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  updateApiKey: (apiKey: string, provider: 'gemini' | 'openrouter' | 'supadata' | 'apify') => Promise<void>;
+  updateApiKey: (apiKey: string, provider: 'gemini' | 'openrouter' | 'supadata' | 'rapidapi') => Promise<void>;
   hasGeminiKey: boolean;
   hasSupadataKey: boolean;
-  hasApifyKey: boolean;
+  hasRapidApiKey: boolean;
+  ensureVaultKeys: (userId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -49,6 +54,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const ensureVaultKeys = useCallback(async (userId: string) => {
+    try {
+      const existing = await getVaultKeyPair(userId);
+      if (!existing) {
+        console.log("[VAULT] Generating new E2EE keys...");
+        const keyPair = await generateVaultKeys();
+        const publicKeySpki = await exportPublicKey(keyPair.publicKey);
+        
+        await saveVaultKeyPair({
+          userId,
+          privateKey: keyPair.privateKey,
+          publicKey: keyPair.publicKey,
+          publicKeySpki,
+          createdAt: Date.now()
+        });
+
+        // Push to backend
+        await api.post("/user/public-key", { publicKey: publicKeySpki });
+        console.log("[VAULT] Keys registered successfully.");
+      } else {
+        console.log("[VAULT] Session authenticated with existing hardware-bound keys.");
+      }
+    } catch (err) {
+      console.error("[VAULT] Cryptographic initialization failed:", err);
+    }
+  }, []);
+
   const exchangeToken = useCallback(async (firebaseUser: FirebaseUser) => {
     try {
       const idToken = await firebaseUser.getIdToken();
@@ -60,6 +92,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem("recallai_user", JSON.stringify(backendUser));
         localStorage.setItem("recallai_access_token", accessToken);
         localStorage.setItem("recallai_refresh_token", refreshToken);
+        
+        // Zero-Knowledge Hook
+        await ensureVaultKeys(backendUser._id);
         
         setUser(backendUser);
         return backendUser;
@@ -142,7 +177,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateApiKey = async (apiKey: string, provider: 'gemini' | 'openrouter' | 'supadata' | 'apify' = "gemini") => {
+  const updateApiKey = async (apiKey: string, provider: 'gemini' | 'openrouter' | 'supadata' | 'rapidapi' = "gemini") => {
     const { data } = await api.post("/user/api-key", { apiKey, provider });
     if (data.success) {
       const profileResult = await api.get("/user/profile");
@@ -163,9 +198,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loginWithGoogle, 
       logout,
       updateApiKey,
+      ensureVaultKeys,
       hasGeminiKey: !!user?.hasGeminiKey,
       hasSupadataKey: !!user?.hasSupadataKey,
-      hasApifyKey: !!user?.hasApifyKey
+      hasRapidApiKey: !!user?.hasRapidApiKey
     }}>
       {children}
     </AuthContext.Provider>

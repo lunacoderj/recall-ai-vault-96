@@ -41,11 +41,14 @@ import {
   sendMessage as sendChatMsg,
   getMessages,
   clearChat,
+  syncFriendsLocally,
   type LocalMessage,
 } from "@/lib/chatStore";
 import { toast } from "sonner";
 import { useChat } from "@/contexts/ChatProvider";
 import { useUIStore } from "@/lib/uiStore";
+import { markChatAsSeen } from "@/lib/chatStore";
+
 
 type Tab = "friends" | "requests" | "search" | "shared";
 
@@ -59,6 +62,10 @@ const FriendsPage = () => {
   const [searching, setSearching] = useState(false);
   const [sendingTo, setSendingTo] = useState<string | null>(null);
 
+  // Media upload preview state
+  const [previewFile, setPreviewFile] = useState<{ file: File; url: string; type: 'image' | 'file' } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Chat state
   const [chatFriend, setChatFriend] = useState<FriendUser | null>(null);
   const [chatMsgs, setChatMsgs] = useState<LocalMessage[]>([]);
@@ -70,7 +77,11 @@ const FriendsPage = () => {
 
   const { data: friends, isLoading: loadingFriends } = useQuery({
     queryKey: ["friends"],
-    queryFn: getFriends,
+    queryFn: async () => {
+      const data = await getFriends();
+      await syncFriendsLocally(data);
+      return data;
+    },
     enabled: !!user,
   });
 
@@ -101,7 +112,12 @@ const FriendsPage = () => {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMsgs]);
+
+    // Mark current chat as seen when new messages arrive or chat opens
+    if (chatFriend && user && chatMsgs.length > 0) {
+      markChatAsSeen(user._id, chatFriend._id);
+    }
+  }, [chatMsgs, chatFriend, user]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,10 +163,46 @@ const FriendsPage = () => {
     const text = textOverride || chatInput.trim();
     if (!text && !fileData && !chatFriend) return;
     if (!chatFriend || !user) return;
+
+    if (!chatFriend.publicKey) {
+      toast.error(`${chatFriend.name} hasn't enabled E2EE yet. They need to login once with the latest version.`);
+      return;
+    }
     
-    const msg = await sendChatMsg(user._id, chatFriend._id, text, type, fileData);
+    // 1. If we have a preview file but no fileData was passed (manual send button), upload first
+    if (previewFile && !fileData) {
+      setChatUploading(true);
+      try {
+        const result = await uploadChatFile(previewFile.file);
+        const fileType = result.mimeType.startsWith('image/') ? 'image' : 'file';
+        setPreviewFile(null); // Clear preview
+        
+        const msg = await sendChatMsg(user._id, chatFriend._id, text, chatFriend.publicKey, fileType, { url: result.url, name: result.fileName });
+        setChatMsgs((prev) => [...prev, msg]);
+        setChatInput("");
+        return;
+      } catch (err) {
+        toast.error("Upload failed");
+        setChatUploading(false);
+        return;
+      } finally {
+        setChatUploading(false);
+      }
+    }
+
+    // 2. Standard text message or pre-uploaded file
+    const msg = await sendChatMsg(user._id, chatFriend._id, text, chatFriend.publicKey, type, fileData);
     setChatMsgs((prev) => [...prev, msg]);
     if (!textOverride) setChatInput("");
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isImage = file.type.startsWith('image/');
+    const url = URL.createObjectURL(file);
+    setPreviewFile({ file, url, type: isImage ? 'image' : 'file' });
   };
 
   const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -464,69 +516,143 @@ const FriendsPage = () => {
               {chatMsgs.map((m) => (
                 <div key={m.id} className={`flex ${m.sender === "me" ? "justify-end" : "justify-start"}`}>
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed flex flex-col gap-2 ${
+                    className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed flex flex-col gap-2 relative ${
                       m.sender === "me"
                         ? "bg-primary text-primary-foreground rounded-br-sm shadow-md shadow-primary/20"
                         : "bg-secondary text-foreground rounded-bl-sm border border-border"
                     }`}
                   >
                     {m.type === 'image' && (
-                      <img src={m.fileUrl} alt="sent" className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(m.fileUrl, '_blank')} />
+                      <div className="relative group/img overflow-hidden rounded-lg">
+                        <img 
+                          src={m.fileUrl} 
+                          alt="sent" 
+                          className="max-w-full h-auto cursor-pointer hover:scale-[1.02] transition-transform duration-300" 
+                          onClick={() => window.open(m.fileUrl, '_blank')} 
+                        />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                          <Share2 className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
                     )}
                     {m.type === 'file' && (
                       <div 
-                        className="flex items-center gap-2 p-2 rounded-lg bg-black/10 cursor-pointer hover:bg-black/20"
+                        className="flex items-center gap-3 p-3 rounded-lg bg-black/10 cursor-pointer hover:bg-black/20 transition-colors border border-white/10"
                         onClick={() => window.open(m.fileUrl, '_blank')}
                       >
-                        <FileIcon className="h-4 w-4" />
-                        <span className="underline truncate">{m.fileName}</span>
+                        <div className="p-2 rounded-lg bg-white/10">
+                          <FileIcon className="h-5 w-5 text-current" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate text-[11px] mb-0.5">{m.fileName}</p>
+                          <p className="text-[9px] opacity-60">Click to open document</p>
+                        </div>
                       </div>
                     )}
                     {(m.type === 'text' || m.text) && (
                       <p className="whitespace-pre-wrap">{m.text}</p>
                     )}
-                    <span className={`text-[9px] self-end opacity-60 ${m.sender === 'me' ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
-                      {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <div className="flex items-center justify-end gap-1.5 self-end mt-1">
+                      <span className={`text-[9px] opacity-60`}>
+                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      {m.sender === 'me' && (
+                        <div className="flex items-center">
+                          {m.status === 'seen' ? (
+                            <div className="flex -space-x-1.5 animate-in fade-in zoom-in duration-300">
+                              <Check className="h-2.5 w-2.5 text-blue-400" />
+                              <Check className="h-2.5 w-2.5 text-blue-400 ml-0.5" />
+                            </div>
+                          ) : m.status === 'sent' ? (
+                            <Check className="h-2.5 w-2.5 text-white/50" />
+                          ) : (
+                             /* Delivered but not seen */
+                             <div className="flex -space-x-1.5 opacity-50">
+                              <Check className="h-2.5 w-2.5" />
+                              <Check className="h-2.5 w-2.5 ml-0.5" />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
+
               <div ref={chatEndRef} />
             </div>
 
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
-              <div className="relative group">
-                <button 
-                  className={`p-2 rounded-xl bg-secondary hover:bg-secondary/80 text-muted-foreground transition-colors ${chatUploading ? 'opacity-50' : ''}`}
+            <div className="flex flex-col border-t border-border bg-card/50 backdrop-blur-md">
+              <AnimatePresence>
+                {previewFile && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="p-4 bg-secondary/30 border-b border-border relative flex items-center gap-3"
+                  >
+                    {previewFile.type === 'image' ? (
+                      <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-border/50 shadow-lg">
+                        <img src={previewFile.url} className="h-full w-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="h-16 w-16 rounded-lg bg-secondary flex items-center justify-center border border-border">
+                        <FileIcon className="h-6 w-6 text-primary" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-foreground truncate">{previewFile.file.name}</p>
+                      <p className="text-[9px] text-muted-foreground uppercase">{Math.round(previewFile.file.size / 1024)} KB · {previewFile.type}</p>
+                    </div>
+                    <button 
+                      onClick={() => setPreviewFile(null)}
+                      className="p-1.5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex items-center gap-2 px-4 py-3">
+                <div className="relative">
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`p-2.5 rounded-xl bg-secondary hover:bg-secondary/80 text-muted-foreground transition-all duration-300 hover:scale-105 active:scale-95 glass-morphism border border-white/5 ${chatUploading ? 'opacity-50' : ''}`}
+                    disabled={chatUploading}
+                  >
+                    {chatUploading ? <Loader2 className="h-4 w-4 animate-spin text-primary" /> : <PlusIcon className="h-4 w-4" />}
+                  </button>
+                  <input 
+                    ref={fileInputRef}
+                    type="file" 
+                    className="hidden" 
+                    onChange={handleFileSelect}
+                    disabled={chatUploading}
+                    accept="image/*, .pdf, .doc, .docx"
+                  />
+                </div>
+                
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                  placeholder={previewFile ? "Add a caption..." : "Write a secret message..."}
                   disabled={chatUploading}
-                >
-                  {chatUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusIcon className="h-4 w-4" />}
-                </button>
-                <input 
-                  type="file" 
-                  className="absolute inset-0 opacity-0 cursor-pointer" 
-                  onChange={handleChatFileUpload}
-                  disabled={chatUploading}
+                  className="flex-1 bg-secondary/50 border border-white/5 rounded-xl px-4 py-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 h-10 transition-all"
                 />
+                
+                <Button 
+                  onClick={() => handleSendChat()} 
+                  disabled={chatUploading || (!chatInput.trim() && !previewFile)}
+                  className="p-2.5 rounded-xl gradient-bg text-white h-10 w-10 shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
-              
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                placeholder="Type a message..."
-                disabled={chatUploading}
-                className="flex-1 bg-secondary border-0 rounded-xl px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary h-10"
-              />
-              <button 
-                onClick={() => handleSendChat()} 
-                disabled={chatUploading || !chatInput.trim()}
-                className="p-2.5 rounded-xl gradient-bg text-white disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-              </button>
             </div>
+
           </motion.div>
         )}
       </AnimatePresence>

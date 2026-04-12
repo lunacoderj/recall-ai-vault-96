@@ -33,7 +33,9 @@ export const getRecord = async (id: string) => {
 };
 
 export const addRecord = async (content: string, type = 'note') => {
-  const { data } = await api.post('/records/add', { rawContent: content, contentType: type });
+  const { data } = await api.post('/records/add', 
+    { rawContent: content, contentType: type }
+  );
   return data.data.record as Record;
 };
 
@@ -118,6 +120,7 @@ export interface FriendUser {
   username?: string;
   avatar?: string;
   bio?: string;
+  publicKey?: string; // SPKI Base64
 }
 
 export interface FriendRequest {
@@ -182,7 +185,8 @@ export interface ChatMessage {
   _id?: string;
   senderId: string;
   receiverId: string;
-  content: string;
+  ciphertext: string;
+  iv: string;
   type: 'text' | 'image' | 'file' | 'link';
   fileUrl?: string;
   fileName?: string;
@@ -215,3 +219,19 @@ export const uploadChatFile = async (file: File) => {
   });
   return data.data as { url: string; fileName: string; fileSize: number; mimeType: string };
 };
+
+export const markMessagesAsSeen = async (messageLocalIds: string[], senderId: string) => {
+  const { data } = await api.post('/messages/mark-seen', { messageLocalIds, senderId });
+  return data.success;
+};
+
+export const getNewReceipts = async () => {
+  const { data } = await api.get('/messages/receipts');
+  return data.data.receipts as { _id: string; messageLocalId: string; status: 'seen' }[];
+};
+
+export const acknowledgeReceipts = async (receiptIds: string[]) => {
+  const { data } = await api.post('/messages/receipts/ack', { receiptIds });
+  return data.success;
+};
+

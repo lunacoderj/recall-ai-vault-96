@@ -40,8 +40,10 @@ const LoginPage = () => {
       <div className="absolute inset-0 opacity-20" style={{ background: "var(--gradient-hero)" }} />
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <Brain className="h-8 w-8 text-primary" />
+          <Link to="/" className="inline-flex items-center gap-2 mb-6 group">
+            <div className="rounded-xl bg-primary/10 p-1 border border-primary/20 group-hover:scale-110 transition-transform">
+              <img src="/logo.png" alt="RecallAI Logo" className="h-8 w-8 object-contain" />
+            </div>
             <span className="text-2xl font-bold gradient-text">RecallAI</span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>

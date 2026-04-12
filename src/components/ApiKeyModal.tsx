@@ -19,11 +19,11 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
     gemini: "",
     openrouter: "",
     supadata: "",
-    apify: ""
+    rapidapi: ""
   });
   const [saving, setSaving] = useState<string | null>(null);
 
-  const handleSave = async (provider: 'gemini' | 'openrouter' | 'supadata' | 'apify') => {
+  const handleSave = async (provider: 'gemini' | 'openrouter' | 'supadata' | 'rapidapi') => {
     const key = keys[provider].trim();
     if (!key) { toast.error(`Please enter a ${provider} API key`); return; }
     
@@ -31,7 +31,6 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
     try {
       await updateApiKey(key, provider);
       toast.success(`${provider.toUpperCase()} key saved!`);
-      // Clear input
       setKeys(prev => ({ ...prev, [provider]: "" }));
     } catch (err) {
       toast.error(`Failed to save ${provider} key`);
@@ -45,25 +44,45 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
       title: "Google Gemini",
       desc: "Powers core AI summarization and embeddings.",
       link: "https://aistudio.google.com/app/apikey",
-      placeholder: "AIzaSy..."
+      placeholder: "AIzaSy...",
+      steps: [
+        "Go to Google AI Studio",
+        "Sign in with your Google account",
+        "Click 'Create API key' and copy the code"
+      ]
     },
     openrouter: {
       title: "OpenRouter",
-      desc: "Fallback AI provider for diverse models.",
+      desc: "Alternative AI brain for various models.",
       link: "https://openrouter.ai/keys",
-      placeholder: "sk-or-v1-..."
+      placeholder: "sk-or-v1-...",
+      steps: [
+        "Visit OpenRouter.ai",
+        "Login or create an account",
+        "Go to Keys section and create a new key"
+      ]
     },
     supadata: {
       title: "Supadata.ai",
-      desc: "Handles Instagram & YouTube transcripts.",
+      desc: "Fast transcripts for YouTube & Socials.",
       link: "https://supadata.ai/dashboard",
-      placeholder: "sd_..."
+      placeholder: "sd_...",
+      steps: [
+        "Head to Supadata.ai",
+        "Login and access your dashboard",
+        "Copy your API key from the top bar"
+      ]
     },
-    apify: {
-      title: "Apify (Recommended)",
-      desc: "The 'Nuclear Option' for Instagram. Guarantees bypass of login walls.",
-      link: "https://apify.com/apify/instagram-scraper",
-      placeholder: "apify_api_..."
+    rapidapi: {
+      title: "RapidAPI (Instagram)",
+      desc: "Bypass Instagram login walls for deep scraping.",
+      link: "https://rapidapi.com/3205/api/instagram120/pricing",
+      placeholder: "your_rapid_key...",
+      steps: [
+        "Go to 'Instagram 120' on RapidAPI",
+        "Subscribe to the Free tier ($0/mo)",
+        "Copy your 'x-rapidapi-key' from Hub"
+      ]
     }
   };
 
@@ -90,7 +109,7 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-foreground">Guided AI Setup</h2>
-                  <p className="text-sm text-muted-foreground">Add your API keys to unlock full power</p>
+                  <p className="text-sm text-muted-foreground">Unlock pro features in 60 seconds</p>
                 </div>
               </div>
               <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -99,54 +118,64 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
             </div>
 
             <Tabs defaultValue="gemini" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6 bg-secondary/50 p-1">
-                <TabsTrigger value="gemini" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground flex items-center gap-1.5">
-                  Gemini {user?.hasGeminiKey && <Check className="h-3 w-3" />}
+              <TabsList className="grid w-full grid-cols-4 mb-6 bg-secondary/50 p-1">
+                <TabsTrigger value="gemini" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground text-[10px] md:text-sm">
+                  Gemini
                 </TabsTrigger>
-                <TabsTrigger value="openrouter" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground flex items-center gap-1.5">
-                  OpenRouter {user?.hasOpenRouterKey && <Check className="h-3 w-3" />}
+                <TabsTrigger value="openrouter" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground text-[10px] md:text-sm">
+                  OpenRouter
                 </TabsTrigger>
-                <TabsTrigger value="supadata" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground flex items-center gap-1.5 whitespace-nowrap">
-                  Supadata {user?.hasSupadataKey && <Check className="h-3 w-3" />}
+                <TabsTrigger value="supadata" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground text-[10px] md:text-sm">
+                  Supadata
                 </TabsTrigger>
-                <TabsTrigger value="apify" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground flex items-center gap-1.5 whitespace-nowrap">
-                  Apify {user?.hasApifyKey && <Check className="h-3 w-3" />}
+                <TabsTrigger value="rapidapi" className="data-[state=active]:gradient-bg data-[state=active]:text-primary-foreground text-[10px] md:text-sm">
+                  RapidAPI
                 </TabsTrigger>
               </TabsList>
 
               {(Object.keys(guides) as Array<keyof typeof guides>).map((provider) => (
-                <TabsContent key={provider} value={provider} className="space-y-5 animate-in slide-in-from-right-2 duration-300">
+                <TabsContent key={provider} value={provider} className="space-y-5 animate-in slide-in-from-bottom-2 duration-300">
                   <div className="bg-secondary/30 rounded-xl p-4 border border-border/50">
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-primary/10 rounded-lg shrink-0">
                         <Info className="h-4 w-4 text-primary" />
                       </div>
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-semibold text-foreground">{guides[provider].title}</h4>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          {guides[provider].desc}
-                        </p>
+                      <div className="space-y-4">
+                        <div>
+                          <h4 className="text-sm font-semibold text-foreground">{guides[provider].title}</h4>
+                          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                            {guides[provider].desc}
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <p className="text-[10px] uppercase tracking-wider font-bold text-primary/70">Setup Steps</p>
+                          <ul className="space-y-1.5">
+                            {guides[provider].steps.map((step, idx) => (
+                              <li key={idx} className="flex items-center gap-2 text-xs text-foreground/80">
+                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">
+                                  {idx + 1}
+                                </span>
+                                {step}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
                         <a 
                           href={guides[provider].link} 
                           target="_blank" 
                           rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline bg-primary/5 px-2 py-1 rounded"
                         >
-                          Get your API key here <ExternalLink className="h-3 w-3" />
+                          Launch Dashboard <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>
                     </div>
                   </div>
 
                   <div className="space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <Label className="text-xs text-foreground font-semibold">Your API Key</Label>
-                      {user?.[`has${provider.charAt(0).toUpperCase() + provider.slice(1)}Key` as keyof typeof user] && (
-                        <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-0.5">
-                          <Check className="h-2.5 w-2.5" /> SAVED
-                        </span>
-                      )}
-                    </div>
+                    <Label className="text-xs text-foreground font-semibold">Your API Key</Label>
                     <Input 
                       type="password"
                       placeholder={guides[provider].placeholder} 
@@ -175,8 +204,7 @@ const ApiKeyModal = ({ open, onClose }: ApiKeyModalProps) => {
             <div className="mt-8 flex items-start gap-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-4">
               <Shield className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium leading-relaxed">
-                Your keys are encrypted using AES-256 before being stored in the database. 
-                They are only used to process your personal data and are never shared.
+                Keys are AES-256 encrypted and only used to process your personal data.
               </p>
             </div>
           </motion.div>

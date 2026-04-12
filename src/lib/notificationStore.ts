@@ -63,6 +63,9 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   selectedIds: [],
 
   loadNotifications: async () => {
+    // Only load if not already loaded to prevent overwriting new, live-synced data
+    if (get().isLoaded) return;
+
     const db = await getDB();
     const all = await db.getAllFromIndex(STORE_NAME, 'byCreatedAt');
     const sorted = ([...all] as Notification[]).sort((a, b) => 
@@ -70,20 +73,23 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     );
     const unread = sorted.filter(n => !n.isRead).length;
 
-    set({ notifications: sorted, unreadCount: unread, isLoaded: true, selectedIds: [] });
+    set({ 
+      notifications: sorted, 
+      unreadCount: unread, 
+      isLoaded: true, 
+      selectedIds: [] 
+    });
   },
 
   addNotification: async (data) => {
     const db = await getDB();
     
-    // --- DEDUPLICATION LOGIC ---
-    // 1. Check local state
-    const { notifications } = get();
+    // 1. DEDUPLICATION (State + DB Check)
+    const { notifications, unreadCount } = get();
     if (data.metadata?.messageId) {
       const stateExists = notifications.some(n => n.metadata?.messageId === data.metadata?.messageId);
       if (stateExists) return;
       
-      // 2. Double check DB (just in case state isn't hydrated yet)
       const allNotifs = await db.getAll(STORE_NAME);
       const dbExists = allNotifs.some((n: any) => n.metadata?.messageId === data.metadata?.messageId);
       if (dbExists) return;
@@ -96,14 +102,16 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
 
+    // 2. Persist to DB
     await db.add(STORE_NAME, newNotif);
     
-    set({ 
-      notifications: [newNotif, ...notifications],
-      unreadCount: get().unreadCount + 1 
-    });
+    // 3. --- REHAVE REACTIVELY WITH IMMUTABLE UPDATES ---
+    // This triggers re-renders in all subscribed components (Dropdown, Bell, etc.)
+    set((state) => ({ 
+      notifications: [newNotif, ...state.notifications],
+      unreadCount: state.unreadCount + 1 
+    }));
   },
-
 
   markAsRead: async (id) => {
     const db = await getDB();
@@ -112,11 +120,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       notif.isRead = true;
       await db.put(STORE_NAME, notif);
       
-      const newNotifs = get().notifications.map(n => n.id === id ? notif : n);
-      set({ 
-        notifications: newNotifs,
-        unreadCount: Math.max(0, get().unreadCount - 1)
-      });
+      set((state) => ({ 
+        notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n),
+        unreadCount: Math.max(0, state.unreadCount - 1)
+      }));
     }
   },
 
@@ -133,37 +140,37 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }
     await tx.done;
 
-    const newNotifs = get().notifications.map(n => ({ ...n, isRead: true }));
-    set({ notifications: newNotifs, unreadCount: 0 });
+    set((state) => ({ 
+      notifications: state.notifications.map(n => ({ ...n, isRead: true })),
+      unreadCount: 0 
+    }));
   },
 
   deleteNotification: async (id) => {
     const db = await getDB();
     await db.delete(STORE_NAME, id);
     
-    const notif = get().notifications.find(n => n.id === id);
-    const newNotifs = get().notifications.filter(n => n.id !== id);
-    const newSelected = get().selectedIds.filter(sid => sid !== id);
+    const wasUnread = get().notifications.find(n => n.id === id && !n.isRead);
     
-    set({ 
-      notifications: newNotifs,
-      selectedIds: newSelected,
-      unreadCount: (notif && !notif.isRead) ? Math.max(0, get().unreadCount - 1) : get().unreadCount
-    });
+    set((state) => ({ 
+      notifications: state.notifications.filter(n => n.id !== id),
+      selectedIds: state.selectedIds.filter(sid => sid !== id),
+      unreadCount: wasUnread ? Math.max(0, state.unreadCount - 1) : state.unreadCount
+    }));
   },
 
   toggleSelect: (id) => {
-    const current = get().selectedIds;
-    if (current.includes(id)) {
-      set({ selectedIds: current.filter(sid => sid !== id) });
-    } else {
-      set({ selectedIds: [...current, id] });
-    }
+    set((state) => ({
+      selectedIds: state.selectedIds.includes(id) 
+        ? state.selectedIds.filter(sid => sid !== id) 
+        : [...state.selectedIds, id]
+    }));
   },
 
   selectAll: () => {
-    const allIds = get().notifications.map(n => n.id);
-    set({ selectedIds: allIds });
+    set((state) => ({ 
+      selectedIds: state.notifications.map(n => n.id) 
+    }));
   },
 
   deselectAll: () => {
@@ -181,13 +188,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }
     await tx.done;
 
-    const remaining = notifications.filter(n => !selectedIds.includes(n.id));
-    const unread = remaining.filter(n => !n.isRead).length;
-
-    set({ 
-      notifications: remaining,
-      selectedIds: [],
-      unreadCount: unread
+    set((state) => {
+      const remaining = state.notifications.filter(n => !state.selectedIds.includes(n.id));
+      return { 
+        notifications: remaining,
+        selectedIds: [],
+        unreadCount: remaining.filter(n => !n.isRead).length
+      };
     });
   },
 
@@ -198,21 +205,23 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     const db = await getDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     
-    const updatedNotifs = notifications.map(n => {
-      if (selectedIds.includes(n.id) && !n.isRead) {
-        const updated = { ...n, isRead: true };
-        tx.store.put(updated);
-        return updated;
+    for (const id of selectedIds) {
+      const notif = notifications.find(n => n.id === id);
+      if (notif && !notif.isRead) {
+        notif.isRead = true;
+        await tx.store.put(notif);
       }
-      return n;
-    });
-
+    }
     await tx.done;
-    const unread = updatedNotifs.filter(n => !n.isRead).length;
 
-    set({ 
-      notifications: updatedNotifs,
-      unreadCount: unread
+    set((state) => {
+      const updated = state.notifications.map(n => 
+        state.selectedIds.includes(n.id) ? { ...n, isRead: true } : n
+      );
+      return { 
+        notifications: updated,
+        unreadCount: updated.filter(n => !n.isRead).length
+      };
     });
   }
 }));

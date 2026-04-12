@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Check, MessageSquare, UserPlus, X, Trash2, CheckSquare, Square, RotateCcw } from 'lucide-react';
+import { Bell, Check, MessageSquare, UserPlus, Trash2, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotificationStore, type Notification } from '@/lib/notificationStore';
 import { useNavigate } from 'react-router-dom';
@@ -13,10 +13,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+// SELECTOR-BASED REACTIVITY: This ensures components only re-render when the specific data they need changes.
+// This is the core fix for the reactivity block.
+
 export const NotificationBell = () => {
-  const { unreadCount, loadNotifications } = useNotificationStore();
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
+  const loadNotifications = useNotificationStore((state) => state.loadNotifications);
   const [isOpen, setIsOpen] = useState(false);
 
+  // One-time hydration of notifications state from IndexedDB
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
@@ -59,24 +64,22 @@ export const NotificationBell = () => {
 };
 
 const NotificationDropdown = () => {
-  const { 
-    notifications, 
-    markAllAsRead, 
-    markAsRead, 
-    unreadCount, 
-    deleteNotification,
-    selectedIds,
-    toggleSelect,
-    selectAll,
-    deselectAll,
-    deleteSelected
-  } = useNotificationStore();
+  // Use isolated selectors for perfect reactivity
+  const notifications = useNotificationStore((state) => state.notifications);
+  const markAsRead = useNotificationStore((state) => state.markAsRead);
+  const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
+  const deleteNotification = useNotificationStore((state) => state.deleteNotification);
+  const selectedIds = useNotificationStore((state) => state.selectedIds);
+  const toggleSelect = useNotificationStore((state) => state.toggleSelect);
+  const selectAll = useNotificationStore((state) => state.selectAll);
+  const deselectAll = useNotificationStore((state) => state.deselectAll);
+  const deleteSelected = useNotificationStore((state) => state.deleteSelected);
   
   const navigate = useNavigate();
   const allSelected = notifications.length > 0 && selectedIds.length === notifications.length;
 
   const handleAction = (notif: Notification, e: React.MouseEvent) => {
-    // If clicking the checkbox or trash icon, we don't want to navigate
     if ((e.target as HTMLElement).closest('.stop-nav')) return;
 
     markAsRead(notif.id);
@@ -155,7 +158,7 @@ const NotificationDropdown = () => {
                   </motion.div>
                 </div>
                 <p className="text-xs font-medium">All caught up!</p>
-                <p className="text-[10px] opacity-60 mt-1">No new notifications locally stored.</p>
+                <p className="text-[10px] opacity-60 mt-1">No new notifications here.</p>
               </div>
             ) : (
               notifications.map((notif) => (

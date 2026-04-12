@@ -18,8 +18,10 @@ const Navbar = () => {
   return (
     <nav className="sticky top-0 z-40 glass">
       <div className="container mx-auto flex items-center justify-between px-6 py-3">
-        <Link to="/home" className="flex items-center gap-2">
-          <Brain className="h-7 w-7 text-primary" />
+        <Link to="/home" className="flex items-center gap-2 group">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 p-1 group-hover:scale-110 transition-transform">
+            <img src="/logo.png" alt="RecallAI Logo" className="h-full w-full object-contain" />
+          </div>
           <span className="text-xl font-bold gradient-text">RecallAI</span>
         </Link>
         <div className="flex items-center gap-2">

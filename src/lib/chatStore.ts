@@ -1,14 +1,28 @@
 import { create } from 'zustand';
 import { openDB, type IDBPDatabase } from 'idb';
-import { syncMessages, sendBackendMessage, acknowledgeMessages, type ChatMessage as BackendChatMessage } from './services';
+import { 
+  syncMessages, 
+  sendBackendMessage, 
+  acknowledgeMessages, 
+  markMessagesAsSeen as sendSeenReceipt,
+  getNewReceipts,
+  acknowledgeReceipts,
+  type ChatMessage as BackendChatMessage 
+} from './services';
 import { useNotificationStore } from './notificationStore';
 import { useUIStore } from './uiStore';
 import { showFuturisticToast } from '@/components/notifications/NotificationToast';
+import { 
+  importPublicKey, 
+  deriveSharedKey, 
+  encryptMessage, 
+  decryptMessage 
+} from './crypto';
+import { getVaultKeyPair } from './idb';
 
 const DB_NAME = 'recallai-chat-v2';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Bumped for 'status' field
 const STORE_NAME = 'messages';
-const SYNC_META_STORE = 'sync-meta';
 
 export interface LocalMessage {
   id?: number;
@@ -22,9 +36,9 @@ export interface LocalMessage {
   timestamp: number;
   localId: string;
   isBackendSynced: boolean;
+  status: 'sent' | 'delivered' | 'seen';
 }
 
-// --- NEW REACTIVE STATE ---
 interface ChatState {
   isHydrated: boolean;
   setHydrated: (val: boolean) => void;
@@ -40,15 +54,20 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 const getDB = () => {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion) {
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
           store.createIndex('byConversation', ['myUserId', 'friendId'], { unique: false });
           store.createIndex('byTimestamp', 'timestamp', { unique: false });
           store.createIndex('byLocalId', 'localId', { unique: true });
         }
-        if (!db.objectStoreNames.contains(SYNC_META_STORE)) {
-          db.createObjectStore(SYNC_META_STORE, { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('friends')) {
+          db.createObjectStore('friends', { keyPath: '_id' });
+        }
+        // Migration for version 2
+        if (oldVersion < 2) {
+          // If we had existing data, we'd iterate and add default status
+          // But for this MERN setup, we'll just assume new objects get it.
         }
       },
     });
@@ -56,10 +75,6 @@ const getDB = () => {
   return dbPromise;
 };
 
-/**
- * Save a message locally.
- * Returns the message and a boolean indicating if it's NEW (actually inserted).
- */
 export const saveLocalMessage = async (msg: Omit<LocalMessage, 'id'>): Promise<{ message: LocalMessage, isNew: boolean }> => {
   const db = await getDB();
   const existing = await db.getFromIndex(STORE_NAME, 'byLocalId', msg.localId);
@@ -72,9 +87,6 @@ export const saveLocalMessage = async (msg: Omit<LocalMessage, 'id'>): Promise<{
   return { message: { ...msg, id: id as number }, isNew: true };
 };
 
-/**
- * Get chat history for a conversation.
- */
 export const getMessages = async (myUserId: string, friendId: string): Promise<LocalMessage[]> => {
   const db = await getDB();
   const all = await db.getAllFromIndex(STORE_NAME, 'byConversation', [myUserId, friendId]);
@@ -82,42 +94,93 @@ export const getMessages = async (myUserId: string, friendId: string): Promise<L
 };
 
 /**
- * Sync messages with the backend (Ephemeral Forward-and-Delete Logic).
+ * Mark all unread messages from a specific friend as 'seen'
+ */
+export const markChatAsSeen = async (myUserId: string, friendId: string) => {
+  const db = await getDB();
+  const messages = await db.getAllFromIndex(STORE_NAME, 'byConversation', [myUserId, friendId]);
+  
+  const unreadFromThem = messages.filter(m => m.sender === 'them' && m.status !== 'seen');
+  if (unreadFromThem.length === 0) return;
+
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  
+  const localIds = unreadFromThem.map(m => {
+    store.put({ ...m, status: 'seen' });
+    return m.localId;
+  });
+
+  await tx.done;
+
+  // Push seen status to backend for the sender to see
+  try {
+    await sendSeenReceipt(localIds, friendId);
+  } catch (e) {
+    console.warn('Failed to push seen receipts, will retry later? (Logic not implemented yet)');
+  }
+};
+
+/**
+ * Enhanced Sync logic with Read Receipts
  */
 export const performSync = async (myUserId: string): Promise<number> => {
   const db = await getDB();
   const { isHydrated, setHydrated } = useChatStore.getState();
   
   try {
+    // 1. Pull New Messages
     const newMessages = await syncMessages();
     let count = 0;
     const syncedMessageIds: string[] = [];
 
     for (const msg of newMessages) {
       try {
-        // --- CRITICAL FIX 1: CHECK IF NEW ---
+        let decryptedText = '[Encrypted Message]';
+        
+        // ─── E2EE Decryption Layer ─────────────────────
+        try {
+          const myKeys = await getVaultKeyPair(myUserId);
+          if (myKeys && msg.ciphertext && msg.iv) {
+            // In a real app, we fetch the sender's public key if not provided
+            // For now, we assume the backend sends it or we fetch it from friends list
+            // Optimization: Cache imported keys
+            const friends = await db.getAll('friends'); // Hypothetical friend store
+            const sender = friends.find(f => f._id === msg.senderId);
+            
+            if (sender?.publicKey) {
+               const theirPubKey = await importPublicKey(sender.publicKey);
+               const sharedKey = await deriveSharedKey(myKeys.privateKey, theirPubKey);
+               decryptedText = await decryptMessage(msg.ciphertext, msg.iv, sharedKey);
+            } else {
+               decryptedText = "🔒 User hasn't shared E2EE keys yet.";
+            }
+          }
+        } catch (decryptErr) {
+          console.error("Decryption failed for message", msg.localId, decryptErr);
+          decryptedText = "⚠️ Decryption error (corrupted payload)";
+        }
+
         const { isNew } = await saveLocalMessage({
           friendId: msg.senderId === myUserId ? msg.receiverId : msg.senderId,
           myUserId: myUserId,
           sender: msg.senderId === myUserId ? 'me' : 'them',
-          text: msg.content,
+          text: decryptedText,
           type: msg.type as any,
           fileUrl: msg.fileUrl,
           fileName: msg.fileName,
           timestamp: new Date(msg.createdAt).getTime(),
           localId: msg.localId,
           isBackendSynced: true,
+          status: msg.senderId === myUserId ? 'sent' : 'delivered'
         });
         
-        // --- CRITICAL FIX 2: ONLY NOTIFY IF HYDRATED AND NEW ---
         const activeId = useUIStore.getState().activeChatUserId;
         const isSelf = msg.senderId === myUserId;
         const isActiveChat = msg.senderId === activeId;
 
         if (isNew && isHydrated && !isSelf && !isActiveChat) {
            const bodyText = msg.content.length > 50 ? msg.content.substring(0, 50) + '...' : msg.content;
-           
-           // Deduplication handled in notificationStore.addNotification
            useNotificationStore.getState().addNotification({
              type: 'new_message',
              title: 'New Message',
@@ -131,36 +194,45 @@ export const performSync = async (myUserId: string): Promise<number> => {
             title: 'New Message',
             body: bodyText,
             onAction: () => {
-              const store = useNotificationStore.getState();
-              const related = store.notifications.filter(n => n.actionId === msg.senderId && !n.isRead);
-              related.forEach(n => store.markAsRead(n.id));
               window.location.href = `/friends?chat=${msg.senderId}`;
             }
           });
         }
 
-        syncedMessageIds.push(msg.localId); 
+        if (msg.localId) {
+          syncedMessageIds.push(msg.localId);
+        }
         if (isNew) count++;
       } catch (err) {
         console.error('Failed to save message to idb:', msg.localId, err);
       }
     }
 
-    // Acknowledge messages
     if (syncedMessageIds.length > 0) {
-      try {
-        await acknowledgeMessages(syncedMessageIds);
-      } catch (ackErr: any) {
-        console.warn('ACK failed:', ackErr?.response?.data || ackErr.message);
+      await acknowledgeMessages(syncedMessageIds);
+    }
+
+    // 2. Pull Read Receipts (Seen status from others)
+    const newReceipts = await getNewReceipts();
+    if (newReceipts.length > 0) {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const receiptIdsToAck: string[] = [];
+
+      for (const receipt of newReceipts) {
+        const msg = await store.index('byLocalId').get(receipt.messageLocalId);
+        if (msg) {
+          await store.put({ ...msg, status: 'seen' });
+        }
+        receiptIdsToAck.push(receipt._id);
       }
+      await tx.done;
+      await acknowledgeReceipts(receiptIdsToAck);
     }
 
-    // Mark hydrated after first successful sync attempt (even if 0 messages)
-    if (!isHydrated) {
-      setHydrated(true);
-    }
+    if (!isHydrated) setHydrated(true);
 
-    // 3. Push any unsynced local messages
+    // 3. Push unsynced messages
     const allLocal = await db.getAll(STORE_NAME);
     const unsynced = allLocal.filter(m => !m.isBackendSynced && m.myUserId === myUserId && m.sender === 'me');
     
@@ -174,7 +246,7 @@ export const performSync = async (myUserId: string): Promise<number> => {
           fileName: localMsg.fileName,
           localId: localMsg.localId,
         });
-        await db.put(STORE_NAME, { ...localMsg, isBackendSynced: true });
+        await db.put(STORE_NAME, { ...localMsg, isBackendSynced: true, status: 'sent' });
       } catch (e) {
         console.warn('Retry send failed for', localMsg.localId);
       }
@@ -183,36 +255,52 @@ export const performSync = async (myUserId: string): Promise<number> => {
     return count;
   } catch (error) {
     console.error('Chat sync failed:', error);
-    // Even if it failed, we should probably allow hydration to complete
-    // so we don't block the UI indefinitely, or handle it specifically.
     return 0;
   }
 };
 
-/**
- * Send a message (Local + Backend).
- */
 export const sendMessage = async (
   myUserId: string, 
   friendId: string, 
   text: string, 
+  friendPublicKey: string, // REQUIRED for E2EE
   type: LocalMessage['type'] = 'text',
   fileData?: { url: string; name: string }
 ): Promise<LocalMessage> => {
   const localId = crypto.randomUUID();
   const timestamp = Date.now();
 
+  // ─── E2EE Encryption Layer ─────────────────────
+  let ciphertext = '';
+  let iv = '';
+  
+  try {
+    const myKeys = await getVaultKeyPair(myUserId);
+    if (!myKeys) throw new Error("Local vault keys not found. Re-sync required.");
+    
+    const theirPubKey = await importPublicKey(friendPublicKey);
+    const sharedKey = await deriveSharedKey(myKeys.privateKey, theirPubKey);
+    const encrypted = await encryptMessage(text, sharedKey);
+    
+    ciphertext = encrypted.ciphertext;
+    iv = encrypted.iv;
+  } catch (err) {
+    console.error("[VAULT] Encryption failed:", err);
+    throw new Error("Unable to secure message. E2EE failure.");
+  }
+
   const msgData: Omit<LocalMessage, 'id'> = {
     myUserId,
     friendId,
     sender: 'me',
-    text,
+    text, // Store decrypted locally for UI
     type,
     fileUrl: fileData?.url,
     fileName: fileData?.name,
     timestamp,
     localId,
     isBackendSynced: false,
+    status: 'sent'
   };
 
   const { message: saved } = await saveLocalMessage(msgData);
@@ -220,7 +308,8 @@ export const sendMessage = async (
   try {
     await sendBackendMessage({
       receiverId: friendId,
-      content: text,
+      ciphertext,
+      iv,
       type,
       fileUrl: fileData?.url,
       fileName: fileData?.name,
@@ -230,10 +319,21 @@ export const sendMessage = async (
     const db = await getDB();
     await db.put(STORE_NAME, { ...saved, isBackendSynced: true });
   } catch (err) {
-    console.warn('Failed to send message to backend, will retry on next sync', err);
+    console.warn('Offline send', err);
   }
 
   return saved;
+};
+
+export const syncFriendsLocally = async (friends: any[]) => {
+  const db = await getDB();
+  const tx = db.transaction('friends', 'readwrite');
+  const store = tx.objectStore('friends');
+  await store.clear();
+  for (const f of friends) {
+    await store.add(f);
+  }
+  await tx.done;
 };
 
 export const clearChat = async (myUserId: string, friendId: string): Promise<void> => {

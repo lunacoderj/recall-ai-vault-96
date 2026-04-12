@@ -18,6 +18,7 @@ const saveApiKey = async (req, res, next) => {
       gemini: 'encryptedGeminiApiKey',
       openrouter: 'encryptedOpenRouterApiKey',
       supadata: 'encryptedSupadataApiKey',
+      rapidapi: 'encryptedRapidApiKey',
     };
 
     const dbField = fieldMap[provider.toLowerCase()];
@@ -57,7 +58,7 @@ const saveApiKey = async (req, res, next) => {
 const getProfile = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId)
-      .select('+encryptedGeminiApiKey +encryptedOpenRouterApiKey +encryptedSupadataApiKey');
+      .select('+encryptedGeminiApiKey +encryptedOpenRouterApiKey +encryptedSupadataApiKey +encryptedRapidApiKey');
 
     if (!user) {
       return res.status(404).json({
@@ -74,6 +75,7 @@ const getProfile = async (req, res, next) => {
         hasGeminiKey: !!user.encryptedGeminiApiKey,
         hasOpenRouterKey: !!user.encryptedOpenRouterApiKey,
         hasSupadataKey: !!user.encryptedSupadataApiKey,
+        hasRapidApiKey: !!user.encryptedRapidApiKey,
       },
     });
   } catch (error) {
@@ -125,8 +127,32 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const savePublicKey = async (req, res, next) => {
+  try {
+    const { publicKey } = req.body;
+    const userId = req.userId;
+
+    if (!publicKey) {
+      return res.status(400).json({ success: false, message: 'Public key is required.' });
+    }
+
+    await User.findByIdAndUpdate(userId, { publicKey });
+
+    logger.info(`Public key registered for user ${userId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Cryptographic public key registered in Vault successfully.',
+      data: { publicKey },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   saveApiKey,
   getProfile,
   updateProfile,
+  savePublicKey,
 };

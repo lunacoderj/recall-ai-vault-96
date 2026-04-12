@@ -26,7 +26,7 @@ const searchUsers = async (req, res, next) => {
         { name: { $regex: query, $options: 'i' } },
       ],
     })
-      .select('name email username avatar bio')
+      .select('name email username avatar bio publicKey')
       .limit(20)
       .lean();
 
@@ -137,7 +137,7 @@ const getPendingRequests = async (req, res, next) => {
 const getFriends = async (req, res, next) => {
   try {
     const user = await User.findById(req.userId)
-      .populate('friends', 'name email username avatar bio')
+      .populate('friends', 'name email username avatar bio publicKey')
       .lean();
 
     res.json({ success: true, data: user?.friends || [] });

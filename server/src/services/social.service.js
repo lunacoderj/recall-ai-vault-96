@@ -3,106 +3,125 @@ const logger = require('../config/logger');
 const { getDecryptedApiKey } = require('../utils/user.utils');
 
 /**
- * Strategy: Internal Instagram extraction via Apify (Nuclear Option)
+ * Strategy: User-provided RapidAPI (BYOK) - Using Instagram 120 API
  */
-const fetchInstagramViaApify = async (url, apifyKey) => {
+const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
   try {
-    logger.info(`[SOCIAL] Running Apify Instagram Scraper for: ${url}`);
+    logger.info(`[SOCIAL] Calling Instagram 120 RapidAPI for: ${url}`);
     
-    // Using the "Sync" run for simplicity in this implementation
-    // Endpoint for running the instagram-scraper actor
-    const runUrl = `https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items?token=${apifyKey}`;
-    
-    const response = await axios.post(runUrl, {
-      directUrls: [url],
-      resultsLimit: 1,
-      scrapeType: "posts"
-    }, {
-      timeout: 120000 // Apify can take a while
-    });
+    const options = {
+      method: 'POST',
+      url: 'https://instagram120.p.rapidapi.com/api/instagram/links',
+      headers: {
+        'x-rapidapi-key': rapidKey,
+        'x-rapidapi-host': 'instagram120.p.rapidapi.com',
+        'Content-Type': 'application/json'
+      },
+      data: { url }
+    };
 
-    const items = response.data;
-    if (items && items.length > 0) {
-      const post = items[0];
-      const content = [
-        `[Instagram Post via Apify]`,
-        `Caption: ${post.caption || 'No caption'}`,
-        `Owner: ${post.ownerUsername || 'Unknown'}`,
-        `Hashtags: ${(post.hashtags || []).join(', ')}`,
-        `Type: ${post.type || 'Unknown'}`
+    const response = await axios.request(options);
+    const data = response.data;
+
+    // 1. RAW DATA LOGGING (For Debugging Mapping Mismatches)
+    console.log("----- [DEBUG] INSTAGRAM 120 RAW PAYLOAD -----");
+    console.log(JSON.stringify(data, null, 2));
+    console.log("---------------------------------------------");
+
+    // 2. ROBUST EXTRACTION (Deep Optional Chaining & Multiple Paths)
+    const caption = 
+      data.caption || 
+      data.description || 
+      data.text || 
+      data.edge_media_to_caption?.edges?.[0]?.node?.text || 
+      data.items?.[0]?.caption?.text ||
+      null;
+
+    const mediaUrl = 
+      data.media || 
+      data.video_url || 
+      data.display_url || 
+      data.media_source || 
+      data.items?.[0]?.video_versions?.[0]?.url ||
+      data.items?.[0]?.image_versions2?.candidates?.[0]?.url ||
+      null;
+
+    // 3. PREVENT NULL SAVES (Stringified Dump Fallback)
+    if (!caption && !mediaUrl) {
+      logger.warn(`[SOCIAL] Data extraction failed for IG URL. Saving raw dump.`);
+      return [
+        `[Instagram Content - RAW EXTRACTION FALLBACK]`,
+        `The automated parser could not map the fields. Raw data preserved below:`,
+        `--- RAW DATA ---`,
+        JSON.stringify(data, null, 2)
       ].join('\n\n');
-      
-      return content;
     }
-    return null;
+
+    return [
+      `[Instagram Content via Personal RapidAPI (v120)]`,
+      `Caption: ${caption || 'No caption extracted'}`,
+      `Media URL: ${mediaUrl || 'No direct media URL found'}`,
+      `Scraped via: Instagram 120 /links`
+    ].join('\n\n');
+
   } catch (err) {
-    logger.error(`[SOCIAL] Apify failed for ${url}: ${err.message}`);
-    return null;
+    if (err.response?.status === 429) {
+      throw new Error('RapidAPI Rate Limit Exceeded. Please check your Instagram 120 plan.');
+    }
+    if (err.response?.status === 403) {
+      throw new Error('Invalid RapidAPI Key. Please re-configure in Settings.');
+    }
+    logger.error(`[SOCIAL] Instagram 120 RapidAPI failed: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Strategy: Social extraction via Supadata
+ * Strategy: Social extraction via Supadata (Only for Youtube/Others)
  */
 const fetchSocialViaSupadata = async (url, supadataKey) => {
   try {
-    const cleanUrl = new URL(url);
-    cleanUrl.search = ""; 
-    const sanitizedUrl = cleanUrl.origin + cleanUrl.pathname;
-
-    logger.info(`[SOCIAL] Trying Supadata for: ${sanitizedUrl}`);
-    
-    let response;
-    try {
-      response = await axios.get('https://api.supadata.ai/v1/instagram/transcript', {
-        params: { url: sanitizedUrl },
-        headers: { 'x-api-key': supadataKey }
-      });
-    } catch (e1) {
-      logger.warn(`[SOCIAL] Supadata /v1/instagram/transcript failed. Trying fallback endpoint...`);
-      response = await axios.get('https://api.supadata.ai/v1/social/transcript', {
-        params: { url: sanitizedUrl },
-        headers: { 'x-api-key': supadataKey }
-      });
-    }
-    
-    if (response.data && (response.data.transcript || response.data.content)) {
-      return response.data.transcript || response.data.content;
-    }
-    return null;
+    logger.info(`[SOCIAL] Trying Supadata for: ${url}`);
+    const response = await axios.get('https://api.supadata.ai/v1/instagram/transcript', {
+      params: { url },
+      headers: { 'x-api-key': supadataKey }
+    });
+    return response.data.transcript || response.data.content || null;
   } catch (err) {
-    logger.error(`[SOCIAL] Supadata failed for ${url}: ${err.message}`);
     return null;
   }
 };
 
 /**
- * Main Entry Point: Extract transcript/content from social links
+ * Main Entry Point
  */
-const extractSocialTranscript = async (url, userId) => {
+const extractSocialTranscript = async (url, userId, userRapidKey = null) => {
   const isInstagram = url.includes('instagram.com/reel') || url.includes('instagram.com/p/');
   const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
 
-  if (!isInstagram && !isYoutube) return null;
-
-  // 1. Try Apify for Instagram if available
   if (isInstagram) {
     try {
-      const apifyKey = await getDecryptedApiKey(userId, 'apify');
-      const apifyData = await fetchInstagramViaApify(url, apifyKey);
-      if (apifyData) return apifyData;
+      const dbRapidKey = await getDecryptedApiKey(userId, 'rapidapi');
+      const rapidData = await fetchInstagramViaRapidAPI(url, dbRapidKey);
+      if (rapidData) return rapidData;
     } catch (err) {
-      logger.info(`[SOCIAL] No Apify key or Apify failed, falling back to Supadata/Generic...`);
+      if (err.code === 'NO_API_KEY') {
+        throw new Error('Instagram requires a configured RapidAPI key in Settings.');
+      }
+      if (err.message.includes('RapidAPI')) throw err;
+      logger.error(`[SOCIAL] Instagram scraping failed: ${err.message}`);
+      return null;
     }
+    return null;
   }
 
-  // 2. Try Supadata (Generic Social/YT)
-  try {
-    const supadataKey = await getDecryptedApiKey(userId, 'supadata');
-    const supadataData = await fetchSocialViaSupadata(url, supadataKey);
-    if (supadataData) return supadataData;
-  } catch (err) {
-    logger.info(`[SOCIAL] Supadata extraction failed or key missing.`);
+  if (isYoutube) {
+    try {
+      const supadataKey = await getDecryptedApiKey(userId, 'supadata');
+      const supadataData = await fetchSocialViaSupadata(url, supadataKey);
+      if (supadataData) return supadataData;
+    } catch (err) {}
+    return null;
   }
 
   return null;

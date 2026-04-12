@@ -46,9 +46,8 @@ const addRecord = async (req, res, next) => {
       const isYoutube = extractedUrl.includes('youtube.com') || extractedUrl.includes('youtu.be');
 
       if (isInstagram || isYoutube) {
-      logger.info(`Social link detected for ${userId}. Routing to specialized API...`);
-      
-      const socialContent = await extractSocialTranscript(extractedUrl, userId);
+        logger.info(`Social link detected for ${userId}. Routing to specialized API...`);
+        const socialContent = await extractSocialTranscript(extractedUrl, userId);
       
       if (socialContent) {
         textToProcess = socialContent;

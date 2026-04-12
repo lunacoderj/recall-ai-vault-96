@@ -65,6 +65,11 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    encryptedRapidApiKey: {
+      type: String,
+      default: null,
+      select: false,
+    },
     aiProvider: {
       type: String,
       enum: ['gemini', 'openrouter', 'openai'],
@@ -84,6 +89,12 @@ const userSchema = new mongoose.Schema(
         ref: 'User',
       },
     ],
+
+    // ─── Cryptography ──────────────────────────────────
+    publicKey: {
+      type: String, // SPKI Base64 format
+      default: null,
+    },
 
     // ─── Metadata from Firebase ────────────────────────
     authProvider: {
@@ -106,6 +117,7 @@ const userSchema = new mongoose.Schema(
         delete ret.encryptedOpenRouterApiKey;
         delete ret.encryptedSupadataApiKey;
         delete ret.encryptedApifyApiKey;
+        delete ret.encryptedRapidApiKey;
         delete ret.refreshToken;
         return ret;
       },
@@ -129,6 +141,10 @@ userSchema.virtual('hasSupadataKey').get(function() {
 
 userSchema.virtual('hasApifyKey').get(function() {
   return !!this.encryptedApifyApiKey;
+});
+
+userSchema.virtual('hasRapidApiKey').get(function() {
+  return !!this.encryptedRapidApiKey;
 });
 
 module.exports = mongoose.model('User', userSchema);

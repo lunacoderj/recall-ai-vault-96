@@ -14,23 +14,21 @@ const messageSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    content: {
+    ciphertext: {
       type: String,
-      default: '',
+      required: true,
+    },
+    iv: {
+      type: String,
+      required: true,
     },
     type: {
       type: String,
       enum: ['text', 'image', 'file', 'link'],
       default: 'text',
     },
-    fileUrl: {
-      type: String,
-      default: '',
-    },
-    fileName: {
-      type: String,
-      default: '',
-    },
+    fileUrl: String,
+    fileName: String,
     status: {
       type: String,
       enum: ['undelivered', 'delivered'],

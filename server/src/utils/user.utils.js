@@ -13,6 +13,7 @@ const getDecryptedApiKey = async (userId, provider = 'gemini') => {
     openrouter: '+encryptedOpenRouterApiKey',
     supadata: '+encryptedSupadataApiKey',
     apify: '+encryptedApifyApiKey',
+    rapidapi: '+encryptedRapidApiKey',
   };
 
   const user = await User.findById(userId).select(fieldMap[provider.toLowerCase()]);

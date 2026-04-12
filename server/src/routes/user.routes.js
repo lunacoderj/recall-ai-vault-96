@@ -3,6 +3,7 @@ const {
   saveApiKey,
   getProfile,
   updateProfile,
+  savePublicKey,
 } = require('../controllers/user.controller');
 const { authenticate } = require('../middleware/auth');
 const { apiKeyValidator, updateProfileValidator } = require('../middleware/validators');
@@ -13,6 +14,9 @@ router.use(authenticate);
 
 // POST /api/user/api-key
 router.post('/api-key', apiKeyValidator, validate, saveApiKey);
+
+// POST /api/user/public-key
+router.post('/public-key', savePublicKey);
 
 // GET /api/user/profile
 router.get('/profile', getProfile);

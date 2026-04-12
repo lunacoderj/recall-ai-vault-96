@@ -61,11 +61,13 @@ const firebaseAuth = async (req, res, next) => {
     // Try by firebaseUid first. If no match, fall back to email
     // to handle cases where the same email was registered via
     // a different auth provider (e.g. email/password then Google).
-    let user = await User.findOne({ firebaseUid });
+    let user = await User.findOne({ firebaseUid })
+      .select('+encryptedGeminiApiKey +encryptedOpenRouterApiKey +encryptedSupadataApiKey +encryptedRapidApiKey');
 
     if (!user) {
       // Check if a user with this email already exists (different provider)
-      user = await User.findOne({ email: email.toLowerCase() });
+      user = await User.findOne({ email: email.toLowerCase() })
+        .select('+encryptedGeminiApiKey +encryptedOpenRouterApiKey +encryptedSupadataApiKey +encryptedRapidApiKey');
     }
 
     if (user) {

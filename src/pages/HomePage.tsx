@@ -24,8 +24,9 @@ const HomePage = () => {
   });
 
   useEffect(() => {
-    // Show setup modal if Gemini key is missing
-    if (user && !hasGeminiKey) {
+    const isDismissed = localStorage.getItem("recallai_api_alert_dismissed") === "true";
+    // Show setup modal if Gemini key is missing and not recently dismissed
+    if (user && !hasGeminiKey && !isDismissed) {
       setShowApiModal(true);
     }
   }, [user, hasGeminiKey]);
@@ -45,7 +46,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <ApiKeyModal open={showApiModal} onClose={() => setShowApiModal(false)} />
+      <ApiKeyModal open={showApiModal} onClose={handleCloseApiModal} />
 
       {/* Hero search */}
       <section className="relative py-16">

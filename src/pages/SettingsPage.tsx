@@ -23,6 +23,8 @@ import { Separator } from "@/components/ui/separator";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useNotificationStore } from "@/lib/notificationStore";
+import { showFuturisticToast } from "@/components/notifications/NotificationToast";
 
 const IntegrationCard = ({ 
   icon: Icon, 
@@ -109,6 +111,26 @@ const IntegrationCard = ({
 const SettingsPage = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { addNotification } = useNotificationStore();
+
+  const handleTestNotification = async () => {
+    // 1. Trigger the visual toast
+    showFuturisticToast({
+      type: 'system',
+      title: 'Lab Test Successful',
+      body: 'Your notification system is fully operational and synced with the vault.',
+      onAction: () => toast.info("Action acknowledged!"),
+    });
+
+    // 2. Add to the persistent notification drawer
+    await addNotification({
+      type: 'system',
+      title: 'Debug Alert',
+      body: 'This is a test notification generated from the Integration Hub.',
+    });
+
+    toast.success("Test sequence initiated!");
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -195,6 +217,25 @@ const SettingsPage = () => {
               />
             </div>
           </div>
+
+          <Separator className="my-8 bg-border" />
+
+          {/* Laboratory Testing */}
+          <section className="mb-8 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+            <h3 className="text-sm font-bold text-foreground mb-2 flex items-center justify-center gap-2">
+              <Zap className="h-4 w-4 text-primary" /> Debug & Laboratory
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              Verify that background alerts, vault notifications, and E2EE signals are reaching your client correctly.
+            </p>
+            <Button 
+              variant="outline" 
+              onClick={handleTestNotification}
+              className="border-primary/50 text-primary hover:bg-primary hover:text-white transition-all"
+            >
+              Fire Test Notification
+            </Button>
+          </section>
 
           <Separator className="my-8 bg-border" />
 

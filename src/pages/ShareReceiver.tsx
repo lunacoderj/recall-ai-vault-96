@@ -22,7 +22,12 @@ const ShareReceiver = () => {
     // Robust URL extraction regex
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const matches = sharedBlob.match(urlRegex);
-    const extractedUrl = matches ? matches[0] : null;
+    let extractedUrl = matches ? matches[0] : null;
+
+    // Clean up trailing punctuation often included by sharing apps (Android/iOS)
+    if (extractedUrl) {
+      extractedUrl = extractedUrl.replace(/[.,!?;:)]+$/, "");
+    }
 
     if (!extractedUrl) {
       console.error("No valid URL found in share intent:", sharedBlob);

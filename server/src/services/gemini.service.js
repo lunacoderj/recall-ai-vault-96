@@ -20,7 +20,7 @@ const createGeminiClient = (apiKey) => {
 const processContentWithAI = async (apiKey, content, contentType, url = '') => {
   try {
     const genAI = createGeminiClient(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const linkInstructions = contentType === 'link'
       ? `\nSPECIAL INSTRUCTIONS FOR LINKS: 
@@ -101,7 +101,7 @@ const rerankResults = async (apiKey, query, results) => {
     if (!results.length) return [];
 
     const genAI = createGeminiClient(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const resultSummaries = results.map((r, i) => ({
       index: i,
@@ -161,7 +161,7 @@ const synthesizeAnswer = async (apiKey, query, records) => {
     if (!records.length) return null;
 
     const genAI = createGeminiClient(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const context = records.map((r, i) => ({
       sourceIndex: i + 1,

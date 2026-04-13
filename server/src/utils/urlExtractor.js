@@ -55,14 +55,15 @@ const tryYouTubeTranscript = async (url) => {
     const videoId = extractYouTubeVideoId(url);
     if (!videoId) return null;
 
-    // Dynamic import since youtube-transcript is ESM
-    const { YoutubeTranscript } = await import('youtube-transcript');
-    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    let transcript = [];
+    try {
+      const { YoutubeTranscript } = await import('youtube-transcript');
+      transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    } catch (err) {
+      logger.warn(`Could not fetch transcript for ${videoId}: ${err.message}`);
+    }
 
-    if (!transcript || transcript.length === 0) return null;
-
-    // Combine transcript segments into flowing text
-    const fullText = transcript.map((t) => t.text).join(' ');
+    const fullText = (transcript && transcript.length > 0) ? transcript.map((t) => t.text).join(' ') : null;
 
     // Also fetch video metadata via oEmbed (free, no key)
     let title = '';
@@ -82,11 +83,16 @@ const tryYouTubeTranscript = async (url) => {
     if (author) parts.push(`Channel: ${author}`);
     parts.push(`URL: ${url}`);
     parts.push(`Video ID: ${videoId}`);
-    parts.push(`\nFull Transcript (${transcript.length} segments):`);
-    parts.push(fullText.substring(0, 20000));
+    
+    if (fullText) {
+      parts.push(`\nFull Transcript (${transcript.length} segments):`);
+      parts.push(fullText.substring(0, 20000));
+    } else {
+      parts.push(`\n[Note: Video transcript was not available, but metadata was successfully captured.]`);
+    }
 
     const result = parts.join('\n');
-    logger.info(`YouTube transcript: ${url} → ${result.length} chars`);
+    logger.info(`YouTube extraction: ${url} → ${result.length} chars`);
     return result;
   } catch (error) {
     logger.warn(`YouTube transcript failed for ${url}: ${error.message}`);
@@ -356,7 +362,7 @@ const extractUrlContent = async (url) => {
   }
 
   // Final fallback (URL only)
-  return `URL: ${url}\n\n[Content could not be automatically extracted. Platform likely blocks standard scrapers.]`;
+  return `URL: ${url}\nPlatform: ${platform.toUpperCase()}\n\n[Context: The specialized content extractor was unable to reach the page body due to platform restrictions. Please analyze the URL structure above to characterize this bookmark.]`;
 };
 
 /**

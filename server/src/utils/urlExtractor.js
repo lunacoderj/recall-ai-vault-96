@@ -231,7 +231,27 @@ const tryInstagram = async (url) => {
       }
     } catch { /* embed extraction is best effort */ }
 
-    // If we still have minimal content, try Jina as Instagram-specific
+    // Fallback 1: DDInstagram (Great for getting captions in oEmbed)
+    if (parts.length <= 3) {
+      try {
+        const ddUrl = `https://www.ddinstagram.com/${type}/${shortcode}`;
+        const { data: html } = await axios.get(ddUrl, { 
+          timeout: 8000,
+          headers: { 'User-Agent': 'Discordbot/2.0' } // Pretend to be discord to get meta tags
+        });
+        const $ = cheerio.load(html);
+        const description = $('meta[property="og:description"]').attr('content') || 
+                           $('meta[name="description"]').attr('content');
+                           
+        if (description && description.length > 10 && !description.includes('Instagram')) {
+          parts.push(`\nDescription (via DDInsta):\n${description}`);
+        }
+      } catch (err) {
+        logger.warn(`DDInstagram fallback failed: ${err.message}`);
+      }
+    }
+
+    // Fallback 2: Jina Reader (standard fallback)
     if (parts.length <= 3) {
       const jinaContent = await tryJinaReader(url);
       if (jinaContent && jinaContent.length > 200) {

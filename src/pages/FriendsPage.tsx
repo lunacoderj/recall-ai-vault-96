@@ -485,7 +485,7 @@ const FriendsPage = () => {
             initial={{ x: 400 }}
             animate={{ x: 0 }}
             exit={{ x: 400 }}
-            className="fixed top-0 right-0 h-full w-full max-w-sm bg-card border-l border-border z-50 flex flex-col shadow-2xl"
+            className="fixed top-0 right-0 h-full w-full sm:max-w-sm bg-card border-l border-border z-[70] flex flex-col shadow-2xl"
           >
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
               <Avatar className="h-8 w-8">

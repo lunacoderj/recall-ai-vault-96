@@ -155,7 +155,7 @@ const UnifiedAssistant = () => {
             animate={{ scale: 1, rotate: 0 }}
             exit={{ scale: 0, rotate: 45 }}
             onClick={() => setOpen(true)}
-            className="fixed bottom-8 right-8 z-50 h-16 w-16 rounded-full gradient-bg text-white shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
+            className="fixed bottom-20 right-6 sm:bottom-8 sm:right-8 z-50 h-16 w-16 rounded-full gradient-bg text-white shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
           >
             <Bot className="h-8 w-8" />
             <div className="absolute -top-1 -right-1 h-5 w-5 bg-green-500 border-2 border-background rounded-full animate-pulse" />
@@ -170,7 +170,7 @@ const UnifiedAssistant = () => {
             initial={{ opacity: 0, x: 100, scale: 0.9 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 100, scale: 0.9 }}
-            className="fixed bottom-8 right-8 z-50 w-[420px] h-[650px] max-h-[90vh] rounded-[2.5rem] border border-border bg-card shadow-2xl flex flex-col overflow-hidden"
+            className="fixed bottom-20 right-4 left-4 sm:bottom-8 sm:right-8 sm:left-auto z-[60] sm:w-[420px] h-[650px] max-h-[85vh] rounded-[2.5rem] border border-border bg-card shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-8 py-6 border-b border-border bg-gradient-to-br from-primary/10 via-transparent to-transparent">

@@ -23,74 +23,65 @@ const addRecord = async (req, res, next) => {
     const { contentType, rawContent, url, fileText } = req.body;
     const userId = req.userId;
 
-    // Determine the text content to process
-    let textToProcess = rawContent || fileText || url || '';
-    let originalContent = rawContent || url || fileText || '';
+    // 1. INPUT SANITIZATION (Defensive check for sharing intent artifacts)
+    let textToProcess = (rawContent || fileText || url || '').trim();
+    let originalContent = textToProcess;
 
     if (!textToProcess) {
       return res.status(400).json({
         success: false,
-        message: 'No content provided. Send rawContent, url, or fileText.',
+        message: 'No content provided.',
         code: 'NO_CONTENT',
       });
     }
 
-    const cleanedInput = textToProcess.trim();
-    const extractedUrl = isUrl(cleanedInput) ? cleanedInput : null;
+    // 2. URL EXTRACTION & CLEANING
+    const extractedUrl = isUrl(textToProcess) ? textToProcess.replace(/[.,!?;:)]+$/, "") : null;
 
     if (extractedUrl) {
       originalContent = extractedUrl;
       
-      // ─── Detect Platform ──────
-      const isInstagram = extractedUrl.includes('instagram.com/reel/') || 
-                          extractedUrl.includes('instagram.com/p/') || 
-                          extractedUrl.includes('instagram.com/reels/');
-      const isYoutube = extractedUrl.includes('youtube.com') || extractedUrl.includes('youtu.be');
-
-      if (isInstagram || isYoutube) {
-        logger.info(`Social link detected for ${userId}. Routing to specialized API...`);
-        try {
-          const socialContent = await extractSocialTranscript(extractedUrl, userId);
-          if (socialContent) {
-            textToProcess = socialContent;
-          } else {
-            logger.warn(`Social extraction returned empty. Using generic fallback for ${extractedUrl}`);
-            textToProcess = await extractUrlContent(extractedUrl);
-          }
-        } catch (socialError) {
-          logger.warn(`Social extraction failed entirely: ${socialError.message}. Using generic fallback.`);
+      // 3. SPECIALIZED SOCIAL ROUTING
+      logger.info(`Processing URL for ${userId}: ${extractedUrl}`);
+      try {
+        const socialContent = await extractSocialTranscript(extractedUrl, userId);
+        if (socialContent) {
+          textToProcess = socialContent;
+        } else {
+          // Fallback to generic scraper if specialized API fails
+          logger.info(`No social extraction available. Falling back to generic scraper...`);
           textToProcess = await extractUrlContent(extractedUrl);
         }
-      } else {
-        // Standard Web Link
-        logger.info(`Standard web link detected. Routing to generic scraper...`);
+      } catch (routingError) {
+        logger.warn(`Routing error: ${routingError.message}. Falling back to generic.`);
         textToProcess = await extractUrlContent(extractedUrl);
       }
     }
 
-    // Decrypt user's API key
-    const apiKey = await getDecryptedApiKey(userId);
+    // 4. AI PROCESSING & FAILOVER PIPELINE
+    // Decrypt primary API key
+    const apiKey = await getDecryptedApiKey(userId).catch(() => null);
 
-    // Process with AI (parallel)
+    // Run AI processing with automatic failover (Gemini -> OpenRouter -> Bookmark)
     const [aiResult, embedding] = await Promise.all([
-      processContentWithAI(apiKey, textToProcess, contentType, originalContent),
-      generateEmbedding(apiKey, textToProcess),
+      processContentWithAI(apiKey, textToProcess, contentType || 'link', originalContent, userId),
+      generateEmbedding(apiKey, textToProcess).catch(() => []),
     ]);
 
-    // Save record
+    // 5. DATA PERISTENCE
     const record = await Record.create({
       userId,
       originalContent,
-      contentType,
-      aiGeneratedTitle: aiResult.title,
-      aiSummary: aiResult.summary,
-      keyPoints: aiResult.keyPoints,
-      tags: aiResult.tags,
-      rawText: textToProcess.substring(0, 50000), // cap raw text storage
+      contentType: contentType || 'link',
+      aiGeneratedTitle: aiResult?.title || 'Untitled Record',
+      aiSummary: aiResult?.summary || 'Summary unavailable',
+      keyPoints: aiResult?.keyPoints || [],
+      tags: aiResult?.tags || [],
+      rawText: textToProcess.substring(0, 50000),
       embedding,
     });
 
-    logger.info(`Record created: ${record._id} for user ${userId}`);
+    logger.info(`Record created successfully: ${record._id}`);
 
     res.status(201).json({
       success: true,
@@ -98,6 +89,7 @@ const addRecord = async (req, res, next) => {
       data: { record },
     });
   } catch (error) {
+    logger.error(`Critical failure in addRecord: ${error.message}`);
     next(error);
   }
 };

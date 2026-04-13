@@ -82,12 +82,13 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
 const fetchSocialViaSupadata = async (url, supadataKey) => {
   try {
     logger.info(`[SOCIAL] Trying Supadata for: ${url}`);
-    const response = await axios.get('https://api.supadata.ai/v1/instagram/transcript', {
+    const response = await axios.get('https://api.supadata.ai/v1/transcript', {
       params: { url },
       headers: { 'x-api-key': supadataKey }
     });
-    return response.data.transcript || response.data.content || null;
+    return response.data.transcript || response.data.content || response.data.text || null;
   } catch (err) {
+    logger.error(`[SOCIAL] Supadata failed: ${err.message}`);
     return null;
   }
 };
@@ -96,7 +97,7 @@ const fetchSocialViaSupadata = async (url, supadataKey) => {
  * Main Entry Point
  */
 const extractSocialTranscript = async (url, userId, userRapidKey = null) => {
-  const isInstagram = url.includes('instagram.com/reel') || url.includes('instagram.com/p/');
+  const isInstagram = url.includes('instagram.com/reel/') || url.includes('instagram.com/reels/') || url.includes('instagram.com/p/');
   const isYoutube = url.includes('youtube.com') || url.includes('youtu.be');
 
   if (isInstagram) {

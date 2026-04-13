@@ -41,29 +41,32 @@ const addRecord = async (req, res, next) => {
     if (extractedUrl) {
       originalContent = extractedUrl;
       
-      // ─── Extract content from specialized links (IG/YT/Social) ──────
-      const isInstagram = extractedUrl.includes('instagram.com/reel') || extractedUrl.includes('instagram.com/p/');
+      // ─── Detect Platform ──────
+      const isInstagram = extractedUrl.includes('instagram.com/reel/') || 
+                          extractedUrl.includes('instagram.com/p/') || 
+                          extractedUrl.includes('instagram.com/reels/');
       const isYoutube = extractedUrl.includes('youtube.com') || extractedUrl.includes('youtu.be');
 
       if (isInstagram || isYoutube) {
         logger.info(`Social link detected for ${userId}. Routing to specialized API...`);
-        const socialContent = await extractSocialTranscript(extractedUrl, userId);
-      
-      if (socialContent) {
-        textToProcess = socialContent;
+        try {
+          const socialContent = await extractSocialTranscript(extractedUrl, userId);
+          if (socialContent) {
+            textToProcess = socialContent;
+          } else {
+            logger.warn(`Social extraction returned empty. Using generic fallback for ${extractedUrl}`);
+            textToProcess = await extractUrlContent(extractedUrl);
+          }
+        } catch (socialError) {
+          logger.warn(`Social extraction failed entirely: ${socialError.message}. Using generic fallback.`);
+          textToProcess = await extractUrlContent(extractedUrl);
+        }
       } else {
-        // Fallback: If scraper fails, use the URL itself as the content.
-        // AI can still try to generate metadata from the URL string.
-        logger.warn(`Social extraction failed for ${extractedUrl}. Falling back to URL as content.`);
-        textToProcess = extractedUrl;
+        // Standard Web Link
+        logger.info(`Standard web link detected. Routing to generic scraper...`);
+        textToProcess = await extractUrlContent(extractedUrl);
       }
-
-    } else if (contentType === 'link' || isUrl(textToProcess.trim())) {
-      // ─── Fallback for Normal Websites / PDFs ──────
-      logger.info(`Standard web link detected. Routing to generic scraper...`);
-      textToProcess = await extractUrlContent(extractedUrl);
     }
-    } // <--- Added this missing brace to close if (extractedUrl)
 
     // Decrypt user's API key
     const apiKey = await getDecryptedApiKey(userId);

@@ -22,6 +22,7 @@ app.use(helmet());
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  'https://recallaivault.jaggu.me',
   'http://localhost:5173',
   'http://localhost:8080',
   'http://localhost:3000'

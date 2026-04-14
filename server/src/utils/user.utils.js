@@ -8,19 +8,23 @@ const { decrypt } = require('./encryption');
  * @returns {Promise<string>} Decrypted API key
  */
 const getDecryptedApiKey = async (userId, provider = 'gemini') => {
+  const p = provider.toLowerCase();
   const fieldMap = {
-    gemini: '+encryptedGeminiApiKey',
-    openrouter: '+encryptedOpenRouterApiKey',
-    supadata: '+encryptedSupadataApiKey',
-    apify: '+encryptedApifyApiKey',
-    rapidapi: '+encryptedRapidApiKey',
+    gemini: 'encryptedGeminiApiKey',
+    openrouter: 'encryptedOpenRouterApiKey',
+    supadata: 'encryptedSupadataApiKey',
+    apify: 'encryptedApifyApiKey',
+    rapidapi: 'encryptedRapidApiKey',
   };
 
-  const user = await User.findById(userId).select(fieldMap[provider.toLowerCase()]);
+  const dbField = fieldMap[p];
+  if (!dbField) throw new Error(`Invalid provider: ${provider}`);
+
+  // Fetch from DB. Using '+' prefix in select to ensure field is included if it's marked as select: false
+  const user = await User.findById(userId).select(`+${dbField}`);
   if (!user) throw new Error('User not found');
 
-  const fieldName = `encrypted${provider.charAt(0).toUpperCase() + provider.slice(1).toLowerCase()}ApiKey`;
-  const encryptedValue = user[fieldName];
+  const encryptedValue = user[dbField];
 
   if (!encryptedValue) {
     const error = new Error(
@@ -30,6 +34,7 @@ const getDecryptedApiKey = async (userId, provider = 'gemini') => {
     error.code = 'NO_API_KEY';
     throw error;
   }
+  
   return decrypt(encryptedValue);
 };
 

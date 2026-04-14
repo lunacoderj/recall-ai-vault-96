@@ -3,8 +3,22 @@ const logger = require('../config/logger');
 const { getDecryptedApiKey } = require('../utils/user.utils');
 
 /**
+ * Defensive utility to safely navigate nested objects without throwing.
+ * path: dot-notation string (e.g., 'data.items.0.caption.text')
+ */
+const safeGet = (obj, path, fallback = null) => {
+  if (!obj || typeof obj !== 'object') return fallback;
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined) return fallback;
+    current = current[part];
+  }
+  return current === undefined || current === null ? fallback : current;
+};
+
+/**
  * Strategy: Instagram via RapidAPI — tries multiple endpoints for resilience
- * Optimized for Carousel support and faster failovers.
  */
 const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
   // 1. Sanitize and Normalize URL
@@ -22,11 +36,6 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
     'Content-Type': 'application/json',
   };
 
-  /**
-   * Optimized Waterfall Strategy:
-   * We use shorter timeouts (8s) per request. Total worst-case ~24s 
-   * instead of 45s. If an API is truly down or rate-limited, we break early.
-   */
   const endpoints = [
     {
       name: 'instagram120/links',
@@ -61,7 +70,7 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
           ...baseHeaders, 
           'x-rapidapi-host': endpoint.host || baseHeaders['x-rapidapi-host'] 
         },
-        timeout: 8000, // Balanced timeout for resilience
+        timeout: 12000, // STRICT TIMEOUT AS REQUESTED
       };
 
       if (endpoint.type === 'POST') config.data = endpoint.data;
@@ -74,8 +83,11 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
       const res = await axios.request(config);
       const data = res?.data;
 
+      // Extract caption directly using defensive paths if any
+      const directCaption = safeGet(data, 'data.items.0.caption.text') || safeGet(data, 'items.0.caption.text');
+
       if (data) {
-        const result = parseInstagramResponse(data, cleanUrl);
+        const result = parseInstagramResponse(data, cleanUrl, directCaption);
         if (result) {
           logger.info(`[SOCIAL] Instagram ${endpoint.name} succeeded`);
           return result;
@@ -85,7 +97,6 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
       const status = e.response?.status;
       logger.warn(`[SOCIAL] Instagram ${endpoint.name} failed (${status || 'TIMEOUT'}): ${e.message}`);
       
-      // Fast-Fail logic: If the key is blocked, invalid, or exhausted, don't keep trying and hanging the server
       if (status === 401 || status === 403 || status === 429) {
         logger.error(`[SOCIAL] RapidAPI key error/limit hit on ${endpoint.name}. Aborting chain.`);
         break; 
@@ -97,18 +108,17 @@ const fetchInstagramViaRapidAPI = async (url, rapidKey) => {
 };
 
 /**
- * Enhanced Parser with CAROUSEL support.
- * Extracts all media items from carousels instead of just the first one.
+ * Enhanced Parser with CAROUSEL support and safeGet defensive logic
  */
-const parseInstagramResponse = (data, url) => {
+const parseInstagramResponse = (data, url, fallbackCaption = null) => {
   if (!data || typeof data !== 'object') return null;
 
-  // Normalize data shape (some APIs return an array, some a single object, some nest in .items or .data)
+  // Normalize data shape defensively
   const items = Array.isArray(data) ? data : (data.items || data.data || [data]);
   
   if (items.length === 0) return null;
 
-  let mainCaption = '';
+  let mainCaption = fallbackCaption || '';
   let author = '';
   let likes = 0;
   const mediaUrls = new Set();
@@ -116,46 +126,44 @@ const parseInstagramResponse = (data, url) => {
   for (const item of items) {
     if (!item || typeof item !== 'object') continue;
 
-    // 1. Extract Global Metadata (usually found in the root item)
+    // 1. Extract Global Metadata defensively using safeGet
     if (!mainCaption) {
       mainCaption = 
-        item.caption?.text || 
-        item.caption || 
-        item.text || 
-        item.description || 
-        item.edge_media_to_caption?.edges?.[0]?.node?.text || 
-        item.caption_text ||
+        safeGet(item, 'caption.text') || 
+        safeGet(item, 'caption') || 
+        safeGet(item, 'text') || 
+        safeGet(item, 'description') || 
+        safeGet(item, 'edge_media_to_caption.edges.0.node.text') || 
+        safeGet(item, 'caption_text') ||
         '';
     }
     
     if (!author) {
-      author = item.owner?.username || item.user?.username || item.username || item.node?.owner?.username || '';
+      author = safeGet(item, 'owner.username') || safeGet(item, 'user.username') || safeGet(item, 'username') || safeGet(item, 'node.owner.username') || '';
     }
     
     if (!likes) {
-      likes = item.like_count || item.edge_liked_by?.count || item.edge_media_preview_like?.count || 0;
+      likes = safeGet(item, 'like_count') || safeGet(item, 'edge_liked_by.count') || safeGet(item, 'edge_media_preview_like.count') || 0;
     }
 
     // 2. Extract Media (Supporting Carousel/Sidecar)
-    // Check for carousel children (Standard Instagram API shape)
-    const children = item.edge_sidecar_to_children?.edges || item.carousel_media || [];
+    const children = safeGet(item, 'edge_sidecar_to_children.edges') || safeGet(item, 'carousel_media') || [];
     
     if (children.length > 0) {
       children.forEach(child => {
         const node = child.node || child;
-        const mUrl = node.video_url || node.display_url || node.image_versions2?.candidates?.[0]?.url || node.video_versions?.[0]?.url;
+        const mUrl = safeGet(node, 'video_url') || safeGet(node, 'display_url') || safeGet(node, 'image_versions2.candidates.0.url') || safeGet(node, 'video_versions.0.url');
         if (mUrl) mediaUrls.add(mUrl);
       });
     } else {
-      // Single Item extraction
       const mUrl = 
-        item.video_url || 
-        item.display_url || 
-        item.thumbnail_url || 
-        item.image_url ||
-        item.node?.video_url || 
-        item.node?.display_url ||
-        (item.video_versions && item.video_versions[0]?.url) ||
+        safeGet(item, 'video_url') || 
+        safeGet(item, 'display_url') || 
+        safeGet(item, 'thumbnail_url') || 
+        safeGet(item, 'image_url') ||
+        safeGet(item, 'node.video_url') || 
+        safeGet(item, 'node.display_url') ||
+        safeGet(item, 'video_versions.0.url') ||
         '';
       if (mUrl) mediaUrls.add(mUrl);
     }
@@ -198,23 +206,22 @@ const buildInstagramResult = ({ caption, mediaUrls, author, likes, url }) => {
 };
 
 /**
- * Strategy: YouTube via Supadata (Parallel Transcript + Metadata Fetching)
+ * Strategy: YouTube via Supadata
  */
 const fetchYoutubeViaSupadata = async (url, supadataKey) => {
   try {
     logger.info(`[SOCIAL] Fetching YouTube via Supadata: ${url}`);
 
-    // Fetch meta and transcript in parallel to save time
     const [metaRes, transRes] = await Promise.allSettled([
       axios.get('https://api.supadata.ai/v1/youtube/video', {
         params: { url },
         headers: { 'x-api-key': supadataKey },
-        timeout: 10000,
+        timeout: 12000, // STRICT TIMEOUT
       }),
       axios.get('https://api.supadata.ai/v1/youtube/transcript', {
         params: { url, text: true },
         headers: { 'x-api-key': supadataKey },
-        timeout: 15000,
+        timeout: 12000, // STRICT TIMEOUT
       }),
     ]);
 
@@ -225,21 +232,20 @@ const fetchYoutubeViaSupadata = async (url, supadataKey) => {
     if (transData) {
       if (typeof transData === 'string') {
         transcriptText = transData;
-      } else if (Array.isArray(transData?.content)) {
-        transcriptText = transData.content.map(i => i?.text || '').filter(Boolean).join(' ');
-      } else if (transData?.transcript) {
-        transcriptText = typeof transData.transcript === 'string' 
-          ? transData.transcript 
-          : transData.transcript.map?.(i => i?.text || '').join(' ') || '';
+      } else {
+        transcriptText = safeGet(transData, 'transcript') || safeGet(transData, 'content') || '';
+        if (Array.isArray(transcriptText)) {
+          transcriptText = transcriptText.map(i => safeGet(i, 'text', '')).filter(Boolean).join(' ');
+        }
       }
     }
 
     const parts = [
       `[Platform: YouTube]`,
-      `Title: ${meta?.title || meta?.name || 'Unknown Title'}`,
-      `Channel: ${meta?.channelTitle || meta?.author?.displayName || 'Unknown Channel'}`,
+      `Title: ${safeGet(meta, 'title') || safeGet(meta, 'name', 'Unknown Title')}`,
+      `Channel: ${safeGet(meta, 'channelTitle') || safeGet(meta, 'author.displayName', 'Unknown Channel')}`,
     ];
-    if (meta?.description) parts.push(`Description: ${meta.description.substring(0, 500)}`);
+    if (safeGet(meta, 'description')) parts.push(`Description: ${meta.description.substring(0, 500)}`);
     parts.push(`URL: ${url}`);
 
     if (transcriptText && transcriptText.length > 50) {
@@ -267,15 +273,16 @@ const fetchGenericViaSupadata = async (url, supadataKey) => {
       timeout: 12000,
     });
     const data = response?.data;
-    if (!data?.content) return null;
-    return `[Web Content Scraped]\nSource: ${data.name || url}\n\n${data.content}`;
+    const content = safeGet(data, 'content');
+    if (!content) return null;
+    return `[Web Content Scraped]\nSource: ${safeGet(data, 'name', url)}\n\n${content}`;
   } catch (err) {
     return null;
   }
 };
 
 /**
- * Main Orchestrator: Route and handle defensive failovers
+ * Main Orchestrator
  */
 const extractSocialTranscript = async (url, userId) => {
   const sanitizedUrl = url.trim().replace(/[.,!?;:)]+$/, '');
@@ -285,7 +292,6 @@ const extractSocialTranscript = async (url, userId) => {
   const isYoutube = cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be');
 
   try {
-    // 1. Instagram Logic
     if (isInstagram) {
       const rapidKey = await getDecryptedApiKey(userId, 'rapidapi').catch(() => null);
       if (rapidKey) {
@@ -294,7 +300,6 @@ const extractSocialTranscript = async (url, userId) => {
       }
     }
 
-    // 2. YouTube Logic
     if (isYoutube) {
       const supadataKey = await getDecryptedApiKey(userId, 'supadata').catch(() => null);
       if (supadataKey) {
@@ -303,7 +308,6 @@ const extractSocialTranscript = async (url, userId) => {
       }
     }
 
-    // 3. Generic Fallback (all platforms)
     const sdk = await getDecryptedApiKey(userId, 'supadata').catch(() => null);
     if (sdk) {
       const generic = await fetchGenericViaSupadata(sanitizedUrl, sdk);
@@ -313,7 +317,6 @@ const extractSocialTranscript = async (url, userId) => {
     logger.warn(`[SOCIAL] Orchestration error for ${url}: ${error.message}`);
   }
 
-  // Returning null allows the caller to trigger the Gemini/OpenRouter logic
   return null;
 };
 

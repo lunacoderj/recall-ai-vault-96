@@ -337,28 +337,47 @@ const tryHtmlScrape = async (url) => {
  * Main URL content extractor — routes to the best strategy based on platform.
  */
 const extractUrlContent = async (url) => {
-  const platform = detectPlatform(url);
-  logger.info(`Extracting URL [${platform}]: ${url}`);
+  // 1. Sanitize URL: Strip trailing punctuation
+  let sanitizedUrl = url.trim().replace(/[.,!?;:)]+$/, '');
+
+  // 2. Normalize and strip tracking parameters using URL constructor
+  try {
+    const urlObj = new URL(sanitizedUrl);
+    const trackingParams = ['igsh', 'utm_source', 'utm_medium', 'utm_campaign', 'si', 'feature', 'share_id'];
+    trackingParams.forEach(p => urlObj.searchParams.delete(p));
+    
+    // Remove trailing slash from pathname if not root
+    if (urlObj.pathname.length > 1 && urlObj.pathname.endsWith('/')) {
+      urlObj.pathname = urlObj.pathname.slice(0, -1);
+    }
+    
+    sanitizedUrl = urlObj.toString();
+  } catch (err) {
+    logger.warn(`Failed to parse/normalize URL: ${url}. Proceeding with trimmed version.`);
+  }
+
+  const platform = detectPlatform(sanitizedUrl);
+  logger.info(`Extracting URL [${platform}]: ${sanitizedUrl}`);
 
   // 1. YouTube specialized path
   if (platform === 'youtube') {
-    const transcript = await tryYouTubeTranscript(url);
+    const transcript = await tryYouTubeTranscript(sanitizedUrl);
     if (transcript) return transcript;
     
     // If transcript fails, fall back to deep scraping
-    const jina = await tryJinaReader(url);
+    const jina = await tryJinaReader(sanitizedUrl);
     if (jina) return `Source: YouTube (Transcript Unavailable)\n\n${jina}`;
   }
 
   // 2. Instagram specialized path
   if (platform === 'instagram') {
-    const insta = await tryInstagram(url);
+    const insta = await tryInstagram(sanitizedUrl);
     if (insta) return insta;
   }
 
   // 3. Twitter/X oEmbed + Jina
   if (platform === 'twitter') {
-    const oembed = await tryOEmbed(url);
+    const oembed = await tryOEmbed(sanitizedUrl);
     if (oembed) return oembed;
   }
 
@@ -371,18 +390,18 @@ const extractUrlContent = async (url) => {
 
   for (const s of strategies) {
     try {
-      const result = await s.fn(url);
+      const result = await s.fn(sanitizedUrl);
       if (result && result.length > 300) {
-        logger.info(`Success with strategy ${s.name} for ${url}`);
+        logger.info(`Success with strategy ${s.name} for ${sanitizedUrl}`);
         return result;
       }
     } catch (e) {
-      logger.warn(`Strategy ${s.name} failed for ${url}: ${e.message}`);
+      logger.warn(`Strategy ${s.name} failed for ${sanitizedUrl}: ${e.message}`);
     }
   }
 
   // Final fallback (URL only)
-  return `URL: ${url}\nPlatform: ${platform.toUpperCase()}\n\n[Context: The specialized content extractor was unable to reach the page body due to platform restrictions. Please analyze the URL structure above to characterize this bookmark.]`;
+  return `URL: ${sanitizedUrl}\nPlatform: ${platform.toUpperCase()}\n\n[Context: The specialized content extractor was unable to reach the page body due to platform restrictions. Please analyze the URL structure above to characterize this bookmark.]`;
 };
 
 /**
